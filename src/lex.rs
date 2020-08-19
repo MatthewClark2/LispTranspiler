@@ -3,13 +3,18 @@ use crate::lex::Number::{Int, Float, Complex, Rational};
 use crate::lex::FloatLexHalt::FloatTerminal;
 
 // TODO(matthew-c21): Consider expanding with longs and arbitrary precision types.
+#[derive(Debug)]
+#[derive(PartialEq)]
 pub enum Number {
     Int(i32),
     Float(f64),
     Complex(f64, f64),
+
+    // Rationals should be simplified at compile time, not lexing time.
     Rational(i32, i32),
 }
 
+#[derive(Debug)]
 pub enum Token {
     Number(Number),
     String(String),
@@ -19,6 +24,20 @@ pub enum Token {
 
     // For now, they can only contain letters.
     Symbol(String),
+}
+
+impl PartialEq for Token {
+    fn eq(&self, other: &Self) -> bool {
+        match (self, other) {
+            (Token::Number(x), Token::Number(y)) => x == y,
+            (Token::String(x), Token::String(y)) => x == y,
+            (Token::Open, Token::Open) => true,
+            (Token::Close, Token::Close) => true,
+            (Token::Keyword(x), Token::Keyword(y)) => x == y,
+            (Token::Symbol(x), Token::Symbol(y)) => x == y,
+            _ => false,
+        }
+    }
 }
 
 enum IntLexHalt { Decimal, Numerator, IntTerminal, Imaginary }
@@ -38,7 +57,7 @@ pub fn start(input: &str) -> Result<Vec<Token>, String> {
             '"' => consume_string(&i[1..]),  // Skip the opening quote.
             ':' => consume_keyword(i),       // Skip the opening colon.
             x if is_space(x) => continue,
-            x if is_numeric(x) => consume_number(i),
+            x if is_numeric(x) || x == '.' => consume_number(i),
             x if is_alpha(x) => consume_symbol(i),
             _ => Err(format!("Unrecognized character `{}`", c)),
         }?;
@@ -132,13 +151,13 @@ fn consume_number(input: &str) -> Result<(Token, &str), String> {
 }
 
 fn continue_float(input: &str, start: String) -> Result<(String, &str, FloatLexHalt), String> {
-    assert_eq!(input.chars().nth(0).unwrap(), '.', "Float must begin with decimal");
+    // assert_eq!(input.chars().nth(0).unwrap(), '.', "Float must begin with decimal");
 
-    let mut i = &input[1..];
+    let mut i = input;
     let mut s = start;
     s.push('.');
 
-    while !i.is_empty() {
+    while !i.is_empty() && !is_terminal_symbol(i.chars().nth(0).unwrap()){
         let x = i.chars().nth(0).unwrap();
         i = &i[1..];
 
@@ -171,7 +190,7 @@ fn consume_int(input: &str) -> Result<(String, &str, IntLexHalt), String> {
         }
     }
 
-    Err(String::from("Integer lexing not interrupted."))
+    Ok((s, i, IntTerminal))
 }
 
 #[cfg(test)]
@@ -181,8 +200,6 @@ mod tests {
 
     #[test]
     fn lparen_only() {
-        let r = start("(").expect("unable to lex");
-        
     }
 
     #[test]
@@ -201,7 +218,26 @@ mod tests {
     fn unicode_escaped_string() {}
 
     #[test]
-    fn valid_numbers() {}
+    fn valid_numbers() {
+        // let r = start("123 12i 6/12 1.23 0. .8 .83i 1.i").unwrap();
+        let r1 = &start("123").unwrap()[0];
+        let r2 = &start("12i").unwrap()[0];
+        let r3 = &start("6/12").unwrap()[0];
+        let r4 = &start("1.23").unwrap()[0];
+        let r5 = &start("0.").unwrap()[0];
+        let r6 = &start(".8").unwrap()[0];
+        let r7 = &start(".83i").unwrap()[0];
+        let r8 = &start("1.i").unwrap()[0];
+        // assert_eq!(r.len(), 8);
+        assert_eq!(*r1, Token::Number(Int(123)));
+        assert_eq!(*r2, Token::Number(Complex(0., 12.)));
+        assert_eq!(*r3, Token::Number(Rational(6, 12)));
+        assert_eq!(*r4, Token::Number(Float(1.23)));
+        assert_eq!(*r5, Token::Number(Float(0.)));
+        assert_eq!(*r6, Token::Number(Float(0.8)));
+        assert_eq!(*r7, Token::Number(Complex(0., 0.83)));
+        assert_eq!(*r8, Token::Number(Complex(0., 1.)));
+    }
 
     #[test]
     fn invalid_numbers() {}
