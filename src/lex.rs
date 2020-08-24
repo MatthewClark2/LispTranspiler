@@ -1,6 +1,7 @@
 use crate::lex::IntLexHalt::{IntTerminal, Imaginary, Numerator, Decimal};
 use crate::lex::Number::{Int, Float, Complex, Rational};
 use crate::lex::FloatLexHalt::FloatTerminal;
+use crate::lex::Token::Symbol;
 
 // TODO(matthew-c21): Consider expanding with longs and arbitrary precision types.
 #[derive(Debug)]
@@ -58,7 +59,7 @@ pub fn start(input: &str) -> Result<Vec<Token>, String> {
             ':' => consume_keyword(i),       // Skip the opening colon.
             x if is_space(x) => continue,
             x if is_numeric(x) || x == '.' => consume_number(i),
-            x if is_alpha(x) => consume_symbol(i),
+            x if is_symbol_start(x) => consume_symbol(i),
             _ => Err(format!("Unrecognized character `{}`", c)),
         }?;
 
@@ -70,12 +71,22 @@ pub fn start(input: &str) -> Result<Vec<Token>, String> {
 }
 
 // TODO(matthew-c21): Rust probably has these built in better.
+// TODO(matthew-c21): All of these create a slice each time they are called. This could probably be
+//  changed to static allocation.
 fn is_numeric(s: char) -> bool {
-    ('0'..'9').contains(&s)
+    ('0'..='9').contains(&s)
 }
 
 fn is_alpha(s: char) -> bool {
-    ('a'..'z').contains(&s) || ('A'..'Z').contains(&s)
+    ('a'..='z').contains(&s) || ('A'..='Z').contains(&s)
+}
+
+fn is_symbol_start(s: char) -> bool {
+    is_alpha(s) || vec!('+', '-', '*', '/', '<', '>', '?', '@', '!', '_', '=').contains(&s)
+}
+
+fn is_symbol_part(s: char) -> bool {
+    is_symbol_start(s) || is_numeric(s)
 }
 
 fn is_space(s: char) -> bool {
@@ -93,12 +104,12 @@ fn consume_string(input: &str) -> Result<(Token, &str), String> {
     while !i.is_empty() {
         match i.chars().nth(0).unwrap() {
             '"' => break,
-            '\n'  => return Err("Unexpected newline while lexing string".to_string()),
+            '\n' => return Err("Unexpected newline while lexing string".to_string()),
             '\\' => {
                 let r = consume_escape(&i[1..])?;
                 s.push(r.0);
                 i = r.1;
-            },
+            }
             c => s.push(c),
         }
 
@@ -116,7 +127,7 @@ fn consume_escape(input: &str) -> Result<(char, &str), String> {
             't' => '\t',
             'n' => '\n',
             'r' => '\r',
-            _   => return Err(format!("Unexpected escape sequence `\\{}`", c).to_string())
+            _ => return Err(format!("Unexpected escape sequence `\\{}`", c).to_string())
         };
 
         Ok((c, &input[1..]))
@@ -128,7 +139,30 @@ fn consume_keyword(input: &str) -> Result<(Token, &str), String> {
 }
 
 fn consume_symbol(input: &str) -> Result<(Token, &str), String> {
-    Err(input.to_string())
+    assert_ne!(input.len(), 0);
+    let first = input.chars().nth(0).unwrap();
+    assert!(is_symbol_start(first));
+
+    let mut i = &input[1..];
+
+    let mut sym = String::new();
+    sym.push(first);
+
+    while !i.is_empty() {
+        let x = i.chars().nth(0).unwrap();
+
+        if is_symbol_part(x) {
+            sym.push(x)
+        } else if is_terminal_symbol(x) {
+            break;
+        } else {
+            return Err(format!("Unexpected `{}` while parsing symbol.", x));
+        }
+
+        i = &i[1..];
+    }
+
+    Ok((Symbol(sym), i))
 }
 
 fn consume_number(input: &str) -> Result<(Token, &str), String> {
@@ -157,7 +191,7 @@ fn continue_float(input: &str, start: String) -> Result<(String, &str, FloatLexH
     let mut s = start;
     s.push('.');
 
-    while !i.is_empty() && !is_terminal_symbol(i.chars().nth(0).unwrap()){
+    while !i.is_empty() && !is_terminal_symbol(i.chars().nth(0).unwrap()) {
         let x = i.chars().nth(0).unwrap();
         i = &i[1..];
 
@@ -199,8 +233,7 @@ mod tests {
     use crate::lex::start;
 
     #[test]
-    fn lparen_only() {
-    }
+    fn lparen_only() {}
 
     #[test]
     fn rparen_only() {}
@@ -243,11 +276,33 @@ mod tests {
     fn invalid_numbers() {}
 
     #[test]
-    #[ignore]
-    fn valid_symbols() {}
+    fn valid_symbols() {
+        let r = start("+").unwrap();
+        assert_eq!(r.len(), 1);
+        assert_eq!(r[0], Symbol(String::from("+")));
+
+        let r = start("_z").unwrap();
+        assert_eq!(r.len(), 1);
+        assert_eq!(r[0], Symbol(String::from("_z")));
+
+        let r = start("abc").unwrap();
+        assert_eq!(r.len(), 1);
+        assert_eq!(r[0], Symbol(String::from("abc")));
+
+        let r = start("++localhost++").unwrap();
+        assert_eq!(r.len(), 1);
+        assert_eq!(r[0], Symbol(String::from("++localhost++")));
+
+        let r = start("lispy-writing").unwrap();
+        assert_eq!(r.len(), 1);
+        assert_eq!(r[0], Symbol(String::from("lispy-writing")));
+
+        let r = start("+sNaKe_CaSe-").unwrap();
+        assert_eq!(r.len(), 1);
+        assert_eq!(r[0], Symbol(String::from("+sNaKe_CaSe-")));
+    }
 
     #[test]
-    #[ignore]
     fn invalid_symbols() {}
 
     #[test]
