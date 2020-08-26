@@ -7,7 +7,19 @@ subject to change at any time. This document serves to try and keep up with such
 how the runtime works. Please check the README associated with the Rust project for semantic details.
 
 When reading the code itself, you may notice some comments labelled `NOTE`. These are there to explain certain quirks
-that may appear when attempting to use the library, as well as the reasoning behind leaving those quirks. 
+that may appear when attempting to use the library, as well as the reasoning behind leaving those quirks.
+
+## Function Conventions
+
+### Error Handling
+
+In order to avoid raising and handling traps, all lisp functions should return a pointer to a lisp value. If the
+function call results in an error, the NULL pointer is returned. Functions that do not return any value should return
+the NIL static constant. Since the library is built under the assumption that NULL pointers are never provided,
+attempts to access them will simply crash. This behavior is not ideal, but it will be dealt with in time once enough 
+debugging information can be added into the program. It may be worthwhile to have a debugging intermediate function that
+checks for NULL returns and gracefully terminates the program, while more optimized compilations skip this step and hard
+crash on failure. 
 
 ## Other Minutiae
 

@@ -58,7 +58,7 @@ struct LispDatum* new_cons(struct LispDatum* car, struct LispDatum* cdr) {
   return x;
 }
 
-struct LispDatum const* get_nil() {
+struct LispDatum* get_nil() {
   // Essentially, what this does is create a single instance of NIL which is then shared
   static struct LispDatum x = {.type =  Nil, .int_val = 0};
   return &x;
