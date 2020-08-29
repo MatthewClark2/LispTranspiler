@@ -125,9 +125,11 @@ void add_aux(struct LispDatum* acc, const struct LispDatum* intermediate) {
       break;
     case Real:
       acc->float_val += intermediate->float_val;
+      break;
     case Complex:
       acc->real += intermediate->real;
       acc->im += intermediate->im;
+      break;
     default:
       break;
   }
@@ -154,9 +156,11 @@ void subtract_aux(struct LispDatum* acc, const struct LispDatum* intermediate) {
       break;
     case Real:
       acc->float_val -= intermediate->float_val;
+      break;
     case Complex:
       acc->real -= intermediate->real;
       acc->im -= intermediate->im;
+      break;
     default:
       break;
   }
@@ -192,9 +196,11 @@ void multiply_aux(struct LispDatum* acc, const struct LispDatum* intermediate) {
       break;
     case Real:
       acc->float_val *= intermediate->float_val;
+      break;
     case Complex:
       acc->real = acc->real * intermediate->real - acc->im * intermediate->im;
       acc->im = acc->real * intermediate->im + acc->im * intermediate->real;
+      break;
     default:
       break;
   }
@@ -228,10 +234,12 @@ void divide_aux(struct LispDatum* acc, const struct LispDatum* intermediate) {
       break;
     case Real:
       acc->float_val /= intermediate->float_val;
+      break;
     case Complex:
       d = intermediate->real * intermediate->real + intermediate->im * intermediate->im;
       acc->real = (acc->real * intermediate->real + acc->im * intermediate->im)/d;
       acc->im = (acc->im * intermediate->real - acc->real * intermediate->im)/d;
+      break;
     default:
       break;
   }
@@ -286,14 +294,19 @@ void display(const struct LispDatum* datum) {
   switch (datum->type) {
     case Integer:
       printf("%d", datum->int_val);
+      break;
     case Rational:
       printf("%d/%d", datum->num, datum->den);
+      break;
     case Real:
       printf("%f", datum->float_val);
+      break;
     case Complex:
       printf("%f%+fi", datum->real, datum->im);
+      break;
     case Symbol:
       printf("%s", datum->content);
+      break;
     case Cons:
       printf("(");
       display(datum->car);
@@ -301,8 +314,10 @@ void display(const struct LispDatum* datum) {
 
       // TODO(matthew-c21): Check for nil at the end of the list.
       display(datum->cdr);
+      break;
     case Nil:
       printf("nil");
+      break;
   }
 }
 

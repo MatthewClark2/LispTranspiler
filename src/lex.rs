@@ -312,4 +312,22 @@ mod tests {
     #[test]
     #[ignore]
     fn invalid_keywords() {}
+
+    #[test]
+    fn function_call() {
+        let r = start("(+ a b c+d*e 12. .2i)").unwrap();
+
+        assert_eq!(r.len(), 8);
+        assert_eq!(r[0], Token::Open);
+        assert_eq!(r[1], Symbol(String::from("+")));
+        assert_eq!(r[2], Symbol(String::from("a")));
+        assert_eq!(r[3], Symbol(String::from("b")));
+        assert_eq!(r[4], Symbol(String::from("c+d*e")));
+        assert_eq!(r[5], Token::Number(Float(12.0)));
+        assert_eq!(r[6], Token::Number(Complex(0.0, 0.2)));
+        assert_eq!(r[7], Token::Close);
+    }
+
+    #[test]
+    fn unbalanced_input() {}
 }
