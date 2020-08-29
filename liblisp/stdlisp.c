@@ -306,3 +306,24 @@ void display(const struct LispDatum* datum) {
   }
 }
 
+int eqv(const struct LispDatum* a, const struct LispDatum* b) {
+  if (a->type == Nil && a->type == b->type) return 1;
+
+  // Currently unimplemented, so default to false.
+  if (a->type > Complex || b->type > Complex) {
+    return 0;
+  }
+
+  if (a->type != b->type) {
+    return 0;
+  }
+
+  switch (a->type) {
+    case Integer: return a->int_val == b->int_val;
+    case Rational: return a->num == b->num && a->den == b->den;
+    case Real: return a->float_val == b->float_val;
+    case Complex: return a->real == b->real && a->im == b->im;
+    default: return 0;
+  }
+}
+

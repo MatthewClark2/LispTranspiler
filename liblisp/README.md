@@ -9,6 +9,13 @@ how the runtime works. Please check the README associated with the Rust project 
 When reading the code itself, you may notice some comments labelled `NOTE`. These are there to explain certain quirks
 that may appear when attempting to use the library, as well as the reasoning behind leaving those quirks.
 
+## Data Types
+
+Rational numbers are always to be stored in their simplest form.
+
+Symbols are to be interned upon creation. This may eliminate the need for keywords, but we'll have to see when we get 
+there.
+
 ## Function Conventions
 
 ### Error Handling

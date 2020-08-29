@@ -63,3 +63,10 @@ struct LispDatum* get_nil() {
   static struct LispDatum x = {.type =  Nil, .int_val = 0};
   return &x;
 }
+
+// TODO(matthew-c21): Update for garbage collection later on.
+void discard_datum(struct LispDatum* x) {
+  if (x->type != Nil) {
+    free(x);
+  }
+}

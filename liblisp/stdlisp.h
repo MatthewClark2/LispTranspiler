@@ -55,4 +55,11 @@ struct LispDatum* division(struct LispDatum** args, uint32_t nargs);
 
 void display(const struct LispDatum* datum);
 
+/**
+ * Determines if two objects are strictly equal.
+ *
+ * This is equivalent to the eqv? predicate found in Scheme. See the R7RS spec for more information.
+ */
+int eqv(const struct LispDatum* a, const struct LispDatum* b);
+
 #endif //LISP_STDLISP_H

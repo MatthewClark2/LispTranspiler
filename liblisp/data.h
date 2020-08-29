@@ -41,6 +41,8 @@ struct LispDatum* new_rational(int32_t a, int32_t b);
 struct LispDatum* new_complex(double r, double i);
 struct LispDatum* new_cons(struct LispDatum* car, struct LispDatum* cdr);
 
+void discard_datum(struct LispDatum* x);
+
 // TODO(matthew-c21): I want nil to be a static constant, but I'm not sure how to deal with const-correctness.
 struct LispDatum* get_nil();
 
