@@ -57,7 +57,10 @@ pub fn start(input: &str) -> Result<Vec<Token>, String> {
             ')' => Ok((Token::Close, &i[1..])),
             '"' => consume_string(&i[1..]),  // Skip the opening quote.
             ':' => consume_keyword(i),       // Skip the opening colon.
-            x if is_space(x) => continue,
+            x if is_space(x) => {
+                i = &i[1..];
+                continue;
+            },
             x if is_numeric(x) || x == '.' => consume_number(i),
             x if is_symbol_start(x) => consume_symbol(i),
             _ => Err(format!("Unrecognized character `{}`", c)),
