@@ -15,6 +15,7 @@ pub enum Number {
     Rational(i32, i32),
 }
 
+// TODO(matthew-c21): Add lexical information (index in file, len, etc.).
 #[derive(Debug)]
 pub enum Token {
     Number(Number),

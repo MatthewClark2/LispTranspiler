@@ -1,5 +1,6 @@
 mod lex;
 mod parse;
+mod data;
 
 #[link(name = "lisp", kind = "static")]
 extern "C" {
