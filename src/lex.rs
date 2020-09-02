@@ -1,25 +1,18 @@
 use crate::lex::IntLexHalt::{IntTerminal, Imaginary, Numerator, Decimal};
-use crate::lex::Number::{Int, Float, Complex, Rational};
 use crate::lex::FloatLexHalt::FloatTerminal;
-use crate::lex::Token::Symbol;
+use crate::lex::Token::{Symbol, Int, Float, Complex, Rational, Str, Open, Close, Keyword};
 
 // TODO(matthew-c21): Consider expanding with longs and arbitrary precision types.
+// TODO(matthew-c21): Add lexical information (index in file, len, etc.).
 #[derive(Debug)]
-#[derive(PartialEq)]
-pub enum Number {
+#[derive(Clone)]
+pub enum Token {
     Int(i32),
     Float(f64),
     Complex(f64, f64),
-
     // Rationals should be simplified at compile time, not lexing time.
     Rational(i32, i32),
-}
-
-// TODO(matthew-c21): Add lexical information (index in file, len, etc.).
-#[derive(Debug)]
-pub enum Token {
-    Number(Number),
-    String(String),
+    Str(String),
     Open,
     Close,
     Keyword(String),
@@ -31,8 +24,12 @@ pub enum Token {
 impl PartialEq for Token {
     fn eq(&self, other: &Self) -> bool {
         match (self, other) {
-            (Token::Number(x), Token::Number(y)) => x == y,
-            (Token::String(x), Token::String(y)) => x == y,
+            (Int(a), Int(b)) => a == b,
+            (Float(x), Float(y)) => x == y,
+            (Complex(a, b), Complex(c, d)) => a == c && b == d,
+            // Rationals should be simplified at compile time, not lexing time.
+            (Rational(a, b), Rational(c, d)) => a == c && b == d,
+            (Token::Str(x), Token::Str(y)) => x == y,
             (Token::Open, Token::Open) => true,
             (Token::Close, Token::Close) => true,
             (Token::Keyword(x), Token::Keyword(y)) => x == y,
@@ -61,7 +58,7 @@ pub fn start(input: &str) -> Result<Vec<Token>, String> {
             x if is_space(x) => {
                 i = &i[1..];
                 continue;
-            },
+            }
             x if is_numeric(x) || x == '.' => consume_number(i),
             x if is_symbol_start(x) => consume_symbol(i),
             _ => Err(format!("Unrecognized character `{}`", c)),
@@ -120,7 +117,7 @@ fn consume_string(input: &str) -> Result<(Token, &str), String> {
         i = &i[1..];
     }
 
-    Ok((Token::String(s), i))
+    Ok((Token::Str(s), i))
 }
 
 fn consume_escape(input: &str) -> Result<(char, &str), String> {
@@ -172,15 +169,15 @@ fn consume_symbol(input: &str) -> Result<(Token, &str), String> {
 fn consume_number(input: &str) -> Result<(Token, &str), String> {
     // TODO(matthew-c21): This method fails for a+bi form complex numbers. Fix that.
     match consume_int(input) {
-        Ok((x, out, IntTerminal)) => Ok((Token::Number(Int(x.parse().unwrap())), out)),
-        Ok((x, out, Imaginary)) => Ok((Token::Number(Complex(0., x.parse().unwrap())), out)),
+        Ok((x, out, IntTerminal)) => Ok((Int(x.parse().unwrap()), out)),
+        Ok((x, out, Imaginary)) => Ok((Complex(0., x.parse().unwrap()), out)),
         Ok((x, out, Decimal)) => match continue_float(out, x) {
-            Ok((x, out, FloatLexHalt::Imaginary)) => Ok((Token::Number(Complex(0., x.parse().unwrap())), out)),
-            Ok((x, out, FloatTerminal)) => Ok((Token::Number(Float(x.parse().unwrap())), out)),
+            Ok((x, out, FloatLexHalt::Imaginary)) => Ok((Complex(0., x.parse().unwrap()), out)),
+            Ok((x, out, FloatTerminal)) => Ok((Float(x.parse().unwrap()), out)),
             Err(msg) => Err(msg),
         }
         Ok((x, out, Numerator)) => match consume_int(out) {
-            Ok((y, out, IntTerminal)) => Ok((Token::Number(Rational(x.parse().unwrap(), y.parse().unwrap())), out)),
+            Ok((y, out, IntTerminal)) => Ok((Rational(x.parse().unwrap(), y.parse().unwrap()), out)),
             Ok(_) => Err(String::from("Illegal continuation of rational number.")),
             Err(x) => Err(x),
         }
@@ -266,14 +263,14 @@ mod tests {
         let r7 = &start(".83i").unwrap()[0];
         let r8 = &start("1.i").unwrap()[0];
         // assert_eq!(r.len(), 8);
-        assert_eq!(*r1, Token::Number(Int(123)));
-        assert_eq!(*r2, Token::Number(Complex(0., 12.)));
-        assert_eq!(*r3, Token::Number(Rational(6, 12)));
-        assert_eq!(*r4, Token::Number(Float(1.23)));
-        assert_eq!(*r5, Token::Number(Float(0.)));
-        assert_eq!(*r6, Token::Number(Float(0.8)));
-        assert_eq!(*r7, Token::Number(Complex(0., 0.83)));
-        assert_eq!(*r8, Token::Number(Complex(0., 1.)));
+        assert_eq!(*r1, (Int(123)));
+        assert_eq!(*r2, (Complex(0., 12.)));
+        assert_eq!(*r3, (Rational(6, 12)));
+        assert_eq!(*r4, (Float(1.23)));
+        assert_eq!(*r5, (Float(0.)));
+        assert_eq!(*r6, (Float(0.8)));
+        assert_eq!(*r7, (Complex(0., 0.83)));
+        assert_eq!(*r8, (Complex(0., 1.)));
     }
 
     #[test]
@@ -327,8 +324,8 @@ mod tests {
         assert_eq!(r[2], Symbol(String::from("a")));
         assert_eq!(r[3], Symbol(String::from("b")));
         assert_eq!(r[4], Symbol(String::from("c+d*e")));
-        assert_eq!(r[5], Token::Number(Float(12.0)));
-        assert_eq!(r[6], Token::Number(Complex(0.0, 0.2)));
+        assert_eq!(r[5], (Float(12.0)));
+        assert_eq!(r[6], (Complex(0.0, 0.2)));
         assert_eq!(r[7], Token::Close);
     }
 
