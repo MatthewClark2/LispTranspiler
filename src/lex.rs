@@ -4,6 +4,7 @@ use crate::lex::Token::{Symbol, Int, Float, Complex, Rational, Str, Open, Close,
 
 // TODO(matthew-c21): Consider expanding with longs and arbitrary precision types.
 // TODO(matthew-c21): Add lexical information (index in file, len, etc.).
+// TODO(matthew-c21): Change this to a Literal(LispDatum) | SyntaxElement(s) enum.
 #[derive(Debug)]
 #[derive(Clone)]
 pub enum Token {
@@ -29,11 +30,11 @@ impl PartialEq for Token {
             (Complex(a, b), Complex(c, d)) => a == c && b == d,
             // Rationals should be simplified at compile time, not lexing time.
             (Rational(a, b), Rational(c, d)) => a == c && b == d,
-            (Token::Str(x), Token::Str(y)) => x == y,
-            (Token::Open, Token::Open) => true,
-            (Token::Close, Token::Close) => true,
-            (Token::Keyword(x), Token::Keyword(y)) => x == y,
-            (Token::Symbol(x), Token::Symbol(y)) => x == y,
+            (Str(x), Str(y)) => x == y,
+            (Open, Open) => true,
+            (Close, Close) => true,
+            (Keyword(x), Keyword(y)) => x == y,
+            (Symbol(x), Symbol(y)) => x == y,
             _ => false,
         }
     }
@@ -51,8 +52,8 @@ pub fn start(input: &str) -> Result<Vec<Token>, String> {
     while !i.is_empty() {
         let c = i.chars().nth(0).unwrap();
         let r = match c {
-            '(' => Ok((Token::Open, &i[1..])),
-            ')' => Ok((Token::Close, &i[1..])),
+            '(' => Ok((Open, &i[1..])),
+            ')' => Ok((Close, &i[1..])),
             '"' => consume_string(&i[1..]),  // Skip the opening quote.
             ':' => consume_keyword(i),       // Skip the opening colon.
             x if is_space(x) => {
@@ -117,7 +118,7 @@ fn consume_string(input: &str) -> Result<(Token, &str), String> {
         i = &i[1..];
     }
 
-    Ok((Token::Str(s), i))
+    Ok((Str(s), i))
 }
 
 fn consume_escape(input: &str) -> Result<(char, &str), String> {
@@ -319,16 +320,60 @@ mod tests {
         let r = start("(+ a b c+d*e 12. .2i)").unwrap();
 
         assert_eq!(r.len(), 8);
-        assert_eq!(r[0], Token::Open);
+        assert_eq!(r[0], Open);
         assert_eq!(r[1], Symbol(String::from("+")));
         assert_eq!(r[2], Symbol(String::from("a")));
         assert_eq!(r[3], Symbol(String::from("b")));
         assert_eq!(r[4], Symbol(String::from("c+d*e")));
         assert_eq!(r[5], (Float(12.0)));
         assert_eq!(r[6], (Complex(0.0, 0.2)));
-        assert_eq!(r[7], Token::Close);
+        assert_eq!(r[7], Close);
     }
 
     #[test]
+    #[ignore]
     fn unbalanced_input() {}
+
+    #[test]
+    fn consecutive_tokens() {
+        // I think the issue is that terminal symbols are being ignored on return.
+        let r = start("(a) (1)) (c d)").unwrap();
+        assert_eq!(r.len(), 11);
+
+        assert_eq!(r[0], Open);
+        assert_eq!(r[1], Symbol("a".to_string()));
+        assert_eq!(r[2], Close);
+        assert_eq!(r[3], Open);
+        assert_eq!(r[4], Int(1));
+        assert_eq!(r[5], Close);
+        assert_eq!(r[6], Close);
+        assert_eq!(r[7], Open);
+        assert_eq!(r[8], Symbol("c".to_string()));
+        assert_eq!(r[9], Symbol("d".to_string()));
+        assert_eq!(r[10], Close);
+    }
+
+    #[test]
+    fn multiple_statements() {
+        let r = start("a 12 d1- (* 1i 2. (+ x 3)) ()").unwrap();
+
+        assert_eq!(r.len(), 15);
+
+        assert_eq!(r[0], Symbol("a".to_string()));
+        assert_eq!(r[1], Int(12));
+        assert_eq!(r[2], Symbol("d1-".to_string()));
+        assert_eq!(r[3], Open);
+        assert_eq!(r[4], Symbol("*".to_string()));
+        assert_eq!(r[5], Complex(0., 1.));
+        assert_eq!(r[6], Float(2.));
+        assert_eq!(r[7], Open);
+        assert_eq!(r[8], Symbol("+".to_string()));
+        assert_eq!(r[9], Symbol("x".to_string()));
+        assert_eq!(r[10], Int(3));
+        assert_eq!(r[11], Close);
+        assert_eq!(r[12], Close);
+        assert_eq!(r[13], Open);
+        assert_eq!(r[14], Close);
+    }
+
 }

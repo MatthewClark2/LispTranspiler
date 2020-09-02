@@ -1,3 +1,4 @@
+#[derive(Debug, PartialEq)]
 pub enum LispDatum {
     Cons(Box<LispDatum>, Box<LispDatum>),
     Complex(f64, f64),
