@@ -195,14 +195,16 @@ fn continue_float(input: &str, start: String) -> Result<(String, &str, FloatLexH
 
     while !i.is_empty() && !is_terminal_symbol(i.chars().nth(0).unwrap()) {
         let x = i.chars().nth(0).unwrap();
-        i = &i[1..];
+        let rest = &i[1..];
 
         match x {
-            'i' => return Ok((s, i, FloatLexHalt::Imaginary)),
+            'i' => return Ok((s, rest, FloatLexHalt::Imaginary)),
             x if is_numeric(x) => s.push(x),
             x if is_terminal_symbol(x) => return Ok((s, i, FloatTerminal)),
             _ => return Err(format!("Unexpected value while lexing float `{}`", x))
         }
+
+        i = rest;
     }
 
     Ok((s, i, FloatTerminal))
@@ -214,16 +216,18 @@ fn consume_int(input: &str) -> Result<(String, &str, IntLexHalt), String> {
 
     while !i.is_empty() {
         let x = i.chars().nth(0).unwrap();
-        i = &i[1..];
+        let rest = &i[1..];
 
         match x {
-            '.' => return Ok((s, i, Decimal)),
-            '/' => return Ok((s, i, Numerator)),
-            'i' => return Ok((s, i, Imaginary)),
+            '.' => return Ok((s, rest, Decimal)),
+            '/' => return Ok((s, rest, Numerator)),
+            'i' => return Ok((s, rest, Imaginary)),
             x if is_terminal_symbol(x) => return Ok((s, i, IntTerminal)),
             x if is_numeric(x) => s.push(x),
             x => return Err(format!("Expected part of number. Found `{}`", x))
         }
+
+        i = rest;
     }
 
     Ok((s, i, IntTerminal))
