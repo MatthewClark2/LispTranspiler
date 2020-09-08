@@ -60,11 +60,11 @@ fn list(tokens: &[Token]) -> Result<(Statement, &[Token]), String> {
 
 #[cfg(test)]
 mod test {
-    use crate::parse::parse;
+    use crate::parse::{parse, Statement};
     use crate::lex::Token;
     use crate::parse::Statement::{Terminal, List};
     use crate::data::LispDatum;
-    use crate::data::LispDatum::{Symbol, Integer};
+    use crate::data::LispDatum::{Symbol, Integer, Complex, Real};
     use crate::lex;
 
     #[test]
@@ -129,6 +129,37 @@ mod test {
         let tokens = lex::start("a 12 d1- (* 1i 2. (+ x 3)) ()").unwrap();
         let x = parse(tokens).unwrap();
 
+        assert_eq!(x.len(), 5);
+        assert_eq!(x[0], Terminal(Symbol("a".to_string())));
+        assert_eq!(x[1], Terminal(Integer(12)));
+        assert_eq!(x[2], Terminal(Symbol("d1-".to_string())));
+        match &x[3] {
+            Terminal(_) => panic!(),
+            List(x) => {
+                assert_eq!(x.len(), 4);
+                assert_eq!(x[0], Terminal(Symbol("*".to_string())));
+                assert_eq!(x[1], Terminal(Complex(0., 1.)));
+                assert_eq!(x[2], Terminal(Real(2.)));
+
+                match &x[3] {
+                    Terminal(_) => panic!(),
+                    List(x) => {
+                        assert_eq!(x.len(), 3);
+
+                        assert_eq!(x[0], Terminal(Symbol("+".to_string())));
+                        assert_eq!(x[1], Terminal(Symbol("x".to_string())));
+                        assert_eq!(x[2], Terminal(Integer(3)));
+                    }
+                }
+            }
+        }
+
+        match &x[4] {
+            Terminal(_) => panic!(),
+            List(x) => {
+                assert_eq!(x.len(), 0);
+            }
+        }
     }
 
     #[test]
