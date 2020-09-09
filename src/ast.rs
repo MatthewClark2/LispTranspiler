@@ -49,6 +49,7 @@ impl ASTNode {
 }
 
 // NOTE(matthew-c21): This is subject to change in response to special forms.
+// TODO(matthew-c21): Add some kind of Error handling.
 pub trait ASTVisitor<T> {
     fn visit_literal(&self, node: &LispDatum) -> T;
 
