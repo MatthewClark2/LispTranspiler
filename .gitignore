@@ -189,3 +189,6 @@ _deps
 **/*.rs.bk
 
 # End of https://www.toptal.com/developers/gitignore/api/rust,c,cmake,clion
+
+# Contains CMake files used for testing generated code.
+tmp/

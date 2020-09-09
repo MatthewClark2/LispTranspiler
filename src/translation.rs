@@ -82,16 +82,19 @@ impl ASTVisitor<String> for TranspilationVisitor {
             Literal(LispDatum::Symbol(s)) => {
                 let mut out = format!("{}(", self.functions.get(s).unwrap());
 
-                args.iter().for_each(|arg| {
-                    out.push_str(arg.accept::<String>(self).as_str());
-                    // TODO(matthew-c21): Not every argument needs a comma.
-                    out.push(',');
-                });
+                if args.len() > 0 {
+                    out.push_str(args[0].accept::<String>(self).as_str());
+
+                    &args[1..].iter().for_each(|arg| {
+                        out.push(',');
+                        out.push_str(arg.accept::<String>(self).as_str());
+                    });
+                }
 
                 out.push(')');
 
                 out
-            },
+            }
             _ => unimplemented!()
         }
     }
