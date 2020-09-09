@@ -192,3 +192,9 @@ _deps
 
 # Contains CMake files used for testing generated code.
 tmp/
+
+# Generated C test runner.
+liblisp/test/AllTests_gen.c
+
+# Code spat out by lispc.
+out.c
