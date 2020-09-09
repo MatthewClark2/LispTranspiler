@@ -1,6 +1,4 @@
 use crate::data::LispDatum;
-use std::fmt::{Display, Formatter};
-use std::fmt;
 use crate::parse::Statement;
 use crate::ast::ASTNode::{Literal, Call};
 
@@ -42,7 +40,7 @@ impl ASTNode {
         ASTNode::from_index(statements, 0)
     }
 
-    pub fn accept(&self, visitor: &mut dyn ASTVisitor) {
+    pub fn accept<T>(&self, visitor: &dyn ASTVisitor<T>) -> T {
         match self {
             ASTNode::Literal(d) => visitor.visit_literal(d),
             ASTNode::Call(c, a) => visitor.visit_call(c, a),
@@ -51,73 +49,75 @@ impl ASTNode {
 }
 
 // NOTE(matthew-c21): This is subject to change in response to special forms.
-pub trait ASTVisitor {
-    fn visit_literal(&mut self, node: &LispDatum);
+pub trait ASTVisitor<T> {
+    fn visit_literal(&self, node: &LispDatum) -> T;
 
-    fn visit_call(&mut self, callee: &ASTNode, args: &Vec<ASTNode>);
+    fn visit_call(&self, callee: &ASTNode, args: &Vec<ASTNode>) -> T;
 }
 
 // All optimizers should be in the form ASTNode -> ASTNode.
 
 // TODO(matthew-c21): For now, everything is run straight from the main function. Later on, I'll
 //  need to break it up to account for functions and (possibly) imports.
-fn preamble() -> String {
-    String::from(
+fn preamble() -> &'static str {
         "#include \"lisp.h\"\n\
-        int main() {\
-        ")
+        int main() {\n"
 }
 
-fn postamble() -> String {
-    String::from("return 0;}")
+fn postamble() -> &'static str {
+    "return 0;\n}"
 }
 
-pub struct TranspilationVisitor {
-    content: String,
-}
+pub struct TranspilationVisitor {}
 
 impl TranspilationVisitor {
     pub fn new() -> Self {
-        TranspilationVisitor { content: String::new() }
+        TranspilationVisitor {}
+    }
+
+    pub fn visit_all(&self, ast: &Vec<ASTNode>) -> String {
+        let mut out = String::new();
+
+        out.push_str(preamble());
+        for (i, statement) in ast.iter().enumerate() {
+            out.push_str(statement.accept::<String>(self).as_str());
+            out.push_str(";\n");
+        }
+        out.push_str(postamble());
+
+        out
     }
 }
 
-impl ASTVisitor for TranspilationVisitor {
-    fn visit_literal(&mut self, node: &LispDatum) {
-        let content = match node {
-            LispDatum::Cons(a, b) => unimplemented!(),
+impl ASTVisitor<String> for TranspilationVisitor {
+    fn visit_literal(&self, node: &LispDatum) -> String {
+        match node {
+            LispDatum::Cons(_, _) => unimplemented!(),
             LispDatum::Complex(r, i) => format!("new_complex({},{})", r, i),
             LispDatum::Real(x) => format!("new_real({})", x),
             LispDatum::Rational(p, q) => format!("new_rational({},{})", p, q),
             LispDatum::Integer(i) => format!("new_integer({})", i),
             LispDatum::Symbol(s) => format!("new_symbol({})", s),
             LispDatum::Nil => format!("get_nil()"),
-        };
-
-        self.content.push_str(content.as_str());
+        }
     }
 
-    fn visit_call(&mut self, callee: &ASTNode, args: &Vec<ASTNode>) {
-        let content = match callee {
+    fn visit_call(&self, callee: &ASTNode, args: &Vec<ASTNode>) -> String {
+        match callee {
             Literal(LispDatum::Symbol(s)) => {
+                // TODO(matthew-c21): Add function lookup.
                 let mut out = format!("{}(", s);
 
                 args.iter().for_each(|arg| {
-                    arg.accept(self);
+                    out.push_str(arg.accept::<String>(self).as_str());
                     out.push(',');
                 });
+
+                out.push(')');
 
                 out
             },
             _ => unimplemented!()
-        };
-
-        self.content.push_str(content.as_str());
-    }
-}
-
-impl Display for TranspilationVisitor {
-    fn fmt(&self, f: &mut Formatter<'_>) -> fmt::Result {
-        write!(f, "{}{}{}", preamble(), self.content, postamble())
+        }
     }
 }
