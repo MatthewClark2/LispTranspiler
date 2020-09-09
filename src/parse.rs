@@ -3,7 +3,7 @@ use crate::lex::Token;
 use crate::parse::Statement::{Terminal, List};
 use crate::data::LispDatum::{Symbol, Integer, Real, Complex, Rational};
 
-#[derive(Debug, PartialEq)]
+#[derive(Debug, PartialEq, Clone)]
 pub enum Statement {
     Terminal(LispDatum),
     List(Vec<Statement>),

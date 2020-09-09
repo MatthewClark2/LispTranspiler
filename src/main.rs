@@ -1,6 +1,7 @@
 mod lex;
 mod parse;
 mod data;
+mod ast;
 
 #[link(name = "lisp", kind = "static")]
 extern "C" {
@@ -10,5 +11,5 @@ extern "C" {
 fn main() {
     println!("Hello, world!");
     unsafe { _rust_demo(2. * std::f32::consts::PI) }
-    lex::start("");
+    parse::parse(lex::start("").unwrap());
 }
