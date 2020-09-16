@@ -10,5 +10,5 @@ fn main() {
     let ast = ast::ASTNode::from(parse_tree).unwrap();
     let visitor = translation::TranspilationVisitor::new();
 
-    println!("{}", visitor.visit_all(&ast));
+    println!("{}", visitor.visit_all(&ast).unwrap());
 }

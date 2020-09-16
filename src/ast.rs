@@ -40,7 +40,7 @@ impl ASTNode {
         ASTNode::from_index(statements, 0)
     }
 
-    pub fn accept<T>(&self, visitor: &dyn ASTVisitor<T>) -> T {
+    pub fn accept<T>(&self, visitor: &dyn ASTVisitor<T>) -> Result<T, String> {
         match self {
             ASTNode::Literal(d) => visitor.visit_literal(d),
             ASTNode::Call(c, a) => visitor.visit_call(c, a),
@@ -51,9 +51,9 @@ impl ASTNode {
 // NOTE(matthew-c21): This is subject to change in response to special forms.
 // TODO(matthew-c21): Add some kind of Error handling.
 pub trait ASTVisitor<T> {
-    fn visit_literal(&self, node: &LispDatum) -> T;
+    fn visit_literal(&self, node: &LispDatum) -> Result<T, String>;
 
-    fn visit_call(&self, callee: &ASTNode, args: &Vec<ASTNode>) -> T;
+    fn visit_call(&self, callee: &ASTNode, args: &Vec<ASTNode>) -> Result<T, String>;
 }
 
 // All optimizers should be in the form ASTNode -> ASTNode.

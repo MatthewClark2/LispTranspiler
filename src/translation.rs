@@ -47,22 +47,22 @@ impl TranspilationVisitor {
         }
     }
 
-    pub fn visit_all(&self, ast: &Vec<ASTNode>) -> String {
+    pub fn visit_all(&self, ast: &Vec<ASTNode>) -> Result<String, String> {
         let mut out = String::new();
 
         out.push_str(preamble());
         for statement in ast {
-            out.push_str(statement.accept::<String>(self).as_str());
+            out.push_str(statement.accept::<String>(self)?.as_str());
             out.push_str(";\n");
         }
         out.push_str(postamble());
 
-        out
+        Ok(out)
     }
 }
 
 impl ASTVisitor<String> for TranspilationVisitor {
-    fn visit_literal(&self, node: &LispDatum) -> String {
+    fn visit_literal(&self, node: &LispDatum) -> Result<String, String> {
         let mut out: String = (self.generators)(node);
 
         out.push_str(match node {
@@ -74,28 +74,28 @@ impl ASTVisitor<String> for TranspilationVisitor {
             LispDatum::Nil => format!("()"),
         }.as_str());
 
-        out
+        Ok(out)
     }
 
-    fn visit_call(&self, callee: &ASTNode, args: &Vec<ASTNode>) -> String {
+    fn visit_call(&self, callee: &ASTNode, args: &Vec<ASTNode>) -> Result<String, String> {
         match callee {
             Literal(LispDatum::Symbol(s)) => {
                 let mut out = format!("{}(", self.functions.get(s).unwrap());
 
                 if args.len() > 0 {
-                    out.push_str(args[0].accept::<String>(self).as_str());
+                    out.push_str(args[0].accept::<String>(self)?.as_str());
 
-                    &args[1..].iter().for_each(|arg| {
+                    for arg in &args[1..] {
                         out.push(',');
-                        out.push_str(arg.accept::<String>(self).as_str());
-                    });
+                        out.push_str(arg.accept::<String>(self)?.as_str());
+                    }
                 }
 
                 out.push(')');
 
-                out
+                Ok(out)
             }
-            _ => unimplemented!()
+            _ => Err(format!("No option for dynamic calls yet."))
         }
     }
 }
