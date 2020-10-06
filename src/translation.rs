@@ -1,68 +1,80 @@
 use crate::data::LispDatum;
-use crate::ast::ASTNode::{Literal};
+use crate::ast::ASTNode::{Literal, Definition, Call};
 use crate::ast::{ASTNode, ASTVisitor};
 use std::collections::HashMap;
-use std::ops::Deref;
 
 /// Struct used to handle the translation of a single compilation unit. Will need to be linked for
 /// multi-file projects.
 pub struct TranslationUnit {
-    visitors: Vec<dyn ASTVisitor<Vec<ASTNode>>>,
+    visitors: Vec<Box<dyn ASTVisitor<Vec<ASTNode>>>>,
     statements: Vec<ASTNode>,
+    _gensym_index: u64,
 }
 
 impl TranslationUnit {
-    fn new(visitors: Vec<dyn ASTVisitor<Vec<ASTNode>>>, statements: Vec<ASTNode>) -> Self {
-        TranslationUnit { visitors, statements }
+    fn new(visitors: Vec<Box<dyn ASTVisitor<Vec<ASTNode>>>>, statements: Vec<ASTNode>) -> Self {
+        TranslationUnit { visitors, statements, _gensym_index: 0 }
     }
 
     pub fn from(statements: Vec<ASTNode>) {
-        visitors = vec!(CallExpansion::new());
+        // visitors = vec!(CallExpansion::new());
+    }
+
+    fn gensym(&mut self) -> String {
+        let x = self._gensym_index;
+        self._gensym_index += 1;
+        format!("__Translation_Unit_gensym_{}", x)
     }
 }
 
-struct CallExpansion {}
+struct CallExpansion<'a> {
+    tu: &'a mut TranslationUnit,
+}
 
-impl CallExpansion {
-    fn expand(node: ASTNode) -> Vec<ASTNode> {
-        let mut defs: Vec<ASTNode> = vec![];
+impl <'a> CallExpansion<'a> {
+    // TODO(matthew-c21): This is probably horrifyingly unoptimized code. Fix it later.
+    fn expand(&mut self, node: ASTNode) -> Vec<ASTNode> {
         let mut expansion: Vec<ASTNode> = vec![];
 
         match node {
-            Literal(_) => expansion.push(node),
-            ASTNode::Call(_, args) => {
+            Call(_, args) => {
+                let mut new_args: Vec<ASTNode> = vec![];
+
                 for arg in args {
                     match arg {
-                        Literal(_) => expansion.push(arg),
-                        ASTNode::Call(_, _) => {}
+                        Call(a, b) => {
+                            let symbol = self.tu.gensym();
+                            new_args.push(Literal(LispDatum::Symbol(symbol.clone())));
+
+                            // This can be safely unwrapped as expand should always generate at least one ASTNode (the input node).
+                            let sub_expansion = self.expand(Call(a, b));
+                            let (last, init) = sub_expansion.split_last().unwrap();
+                            expansion.push(Definition(symbol, Box::new(last.clone())));
+                            expansion.append(&mut init.to_vec());
+                        }
+                        _ => new_args.push(arg),
                     }
                 }
             }
+
+            _ => expansion.push(node),
         }
 
         expansion
     }
 }
 
-impl ASTVisitor<Vec<ASTNode>> for CallExpansion {
-    fn visit_literal(&self, node: &LispDatum) -> Result<Vec<ASTNode>, String> {
-        Ok(vec!(Literal(node.clone())))
+impl <'a> ASTVisitor<Vec<ASTNode>> for CallExpansion<'a> {
+    fn visit_literal(&mut self, node: &LispDatum) -> Result<Vec<ASTNode>, String> {
+        unimplemented!()
     }
 
-    fn visit_call(&self, callee: &ASTNode, args: &Vec<ASTNode>) -> Result<Vec<ASTNode>, String> {
-        /*
-        Get list of nested calls in order from innermost to outermost.
-        For each call,
+    fn visit_call(&mut self, callee: &ASTNode, args: &Vec<ASTNode>) -> Result<Vec<ASTNode>, String> {
+        unimplemented!()
+    }
 
-        Try doing it one at a time - i.e. unroll the innermost function call in a line so that
-         */
-
-        let mut arg_defs: Vec<ASTNode> = vec!();
-
-        self.recursive_visit_call(callee, args, arg_defs)?;
-        // TODO(matthew-c21): Need some kind of recursive algorithm to get to innermost function and evaluate outwards. Replace any non-terminal argument.
-
-        Err(format!("Fuck"))
+    fn visit_definition(&mut self, name: &String, value: &ASTNode) -> Result<Vec<ASTNode>, String> {
+        unimplemented!()
     }
 }
 
@@ -88,6 +100,7 @@ fn default_generators(d: &LispDatum) -> String {
     })
 }
 
+// TODO(matthew-c21): Add reference to translation unit.
 pub struct TranspilationVisitor {
     functions: HashMap<String, String>,
     generators: &'static dyn Fn(&LispDatum) -> String,
@@ -110,7 +123,7 @@ impl TranspilationVisitor {
         }
     }
 
-    pub fn visit_all(&self, ast: &Vec<ASTNode>) -> Result<String, String> {
+    pub fn visit_all(&mut self, ast: &Vec<ASTNode>) -> Result<String, String> {
         let mut out = String::new();
 
         out.push_str(preamble());
@@ -125,7 +138,7 @@ impl TranspilationVisitor {
 }
 
 impl ASTVisitor<String> for TranspilationVisitor {
-    fn visit_literal(&self, node: &LispDatum) -> Result<String, String> {
+    fn visit_literal(&mut self, node: &LispDatum) -> Result<String, String> {
         let mut out: String = (self.generators)(node);
 
         out.push_str(match node {
@@ -140,7 +153,7 @@ impl ASTVisitor<String> for TranspilationVisitor {
         Ok(out)
     }
 
-    fn visit_call(&self, callee: &ASTNode, args: &Vec<ASTNode>) -> Result<String, String> {
+    fn visit_call(&mut self, callee: &ASTNode, args: &Vec<ASTNode>) -> Result<String, String> {
         match callee {
             Literal(LispDatum::Symbol(s)) => {
                 let mut out = format!("{}(", self.functions.get(s).unwrap());
@@ -160,5 +173,10 @@ impl ASTVisitor<String> for TranspilationVisitor {
             }
             _ => Err(format!("No option for dynamic calls yet."))
         }
+    }
+
+    fn visit_definition(&mut self, name: &String, value: &ASTNode) -> Result<String, String> {
+        let v = value.accept(self)?;
+        Ok(format!("LispDatum** {} = {};", name, v))
     }
 }
