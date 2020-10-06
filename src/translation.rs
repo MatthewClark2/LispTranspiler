@@ -2,6 +2,69 @@ use crate::data::LispDatum;
 use crate::ast::ASTNode::{Literal};
 use crate::ast::{ASTNode, ASTVisitor};
 use std::collections::HashMap;
+use std::ops::Deref;
+
+/// Struct used to handle the translation of a single compilation unit. Will need to be linked for
+/// multi-file projects.
+pub struct TranslationUnit {
+    visitors: Vec<dyn ASTVisitor<Vec<ASTNode>>>,
+    statements: Vec<ASTNode>,
+}
+
+impl TranslationUnit {
+    fn new(visitors: Vec<dyn ASTVisitor<Vec<ASTNode>>>, statements: Vec<ASTNode>) -> Self {
+        TranslationUnit { visitors, statements }
+    }
+
+    pub fn from(statements: Vec<ASTNode>) {
+        visitors = vec!(CallExpansion::new());
+    }
+}
+
+struct CallExpansion {}
+
+impl CallExpansion {
+    fn expand(node: ASTNode) -> Vec<ASTNode> {
+        let mut defs: Vec<ASTNode> = vec![];
+        let mut expansion: Vec<ASTNode> = vec![];
+
+        match node {
+            Literal(_) => expansion.push(node),
+            ASTNode::Call(_, args) => {
+                for arg in args {
+                    match arg {
+                        Literal(_) => expansion.push(arg),
+                        ASTNode::Call(_, _) => {}
+                    }
+                }
+            }
+        }
+
+        expansion
+    }
+}
+
+impl ASTVisitor<Vec<ASTNode>> for CallExpansion {
+    fn visit_literal(&self, node: &LispDatum) -> Result<Vec<ASTNode>, String> {
+        Ok(vec!(Literal(node.clone())))
+    }
+
+    fn visit_call(&self, callee: &ASTNode, args: &Vec<ASTNode>) -> Result<Vec<ASTNode>, String> {
+        /*
+        Get list of nested calls in order from innermost to outermost.
+        For each call,
+
+        Try doing it one at a time - i.e. unroll the innermost function call in a line so that
+         */
+
+        let mut arg_defs: Vec<ASTNode> = vec!();
+
+        self.recursive_visit_call(callee, args, arg_defs)?;
+        // TODO(matthew-c21): Need some kind of recursive algorithm to get to innermost function and evaluate outwards. Replace any non-terminal argument.
+
+        Err(format!("Fuck"))
+    }
+}
 
 // TODO(matthew-c21): For now, everything is run straight from the main function. Later on, I'll
 //  need to break it up to account for functions and (possibly) imports.
