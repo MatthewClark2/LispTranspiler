@@ -62,6 +62,7 @@ void display(const struct LispDatum* datum);
  *
  * This is equivalent to the eqv? predicate found in Scheme. See the R7RS spec for more information.
  */
+ // TODO(matthew-c21): Either modify this function or create a new function with the same signature as the rest of the standard library.
 int eqv(const struct LispDatum* a, const struct LispDatum* b);
 
 #endif //LISP_STDLISP_H
