@@ -7,7 +7,7 @@ if [ ! -d tmp ]; then
 fi &&
 cd tmp &&
 (echo "Building C library ...";
-cmake .. -DCOMPILE_GENERATED_CODE=True &&
+cmake .. -DCMAKE_BUILD_TYPE=Debug -DCOMPILE_GENERATED_CODE=True &&
 make out &&
 echo "Executing generated program ... "
 ./out &&
