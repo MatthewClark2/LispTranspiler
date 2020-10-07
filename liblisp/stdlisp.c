@@ -342,3 +342,12 @@ int eqv(const struct LispDatum* a, const struct LispDatum* b) {
   }
 }
 
+struct LispDatum* format(struct LispDatum** args, uint32_t nargs) {
+  for (uint32_t i = 0; i < nargs; ++i) {
+    display(args[i]);
+    printf("\n");
+  }
+
+  return get_nil();
+}
+

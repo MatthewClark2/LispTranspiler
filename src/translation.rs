@@ -174,11 +174,30 @@ impl TranspilationVisitor {
                 ("/", "divide"),
                 ("mod", "mod"),
                 ("division", "division"),
-                ("format", "display"),
+                ("format", "format"),
                 ("eqv", "eqv")
             ].iter().map(|pair| (String::from(pair.0), String::from(pair.1))).clone().collect(),
             generators: &default_generators,
             gensym: Gensym::new(index),
+        }
+    }
+
+    /// Splits a call into its expansion and the actual valued call. Used for defining variables as the value returned from a call.
+    fn split_call(&mut self, callee: &ASTNode, args: &Vec<ASTNode>) -> Result<(String, String), String> {
+        let mut output = String::new();
+
+        match callee {
+            Literal(Symbol(s)) if self.functions.contains_key(s) => {
+                let symbol = self.gensym.gensym("ArgumentCollection");
+                output.push_str(format!("struct LispDatum* {}[{}];\n", symbol, args.len()).as_str());
+
+                for (i, arg) in args.iter().enumerate() {
+                    output.push_str(format!("{}[{}] = {};\n", symbol, i, arg.accept(self)?).as_str());
+                }
+
+                Ok((output, format!("{}({}, {});\n", self.functions.get(s).unwrap(), symbol, args.len())))
+            }
+            _ => Err("Callee is not a built in function and may not be invoked at this time.".to_string()),
         }
     }
 }
@@ -200,32 +219,25 @@ impl ASTVisitor<String> for TranspilationVisitor {
     }
 
     fn visit_call(&mut self, callee: &ASTNode, args: &Vec<ASTNode>) -> Result<String, String> {
-        /*
-        Collect arguments into a stack allocated array.
-        Write the call.
-         */
-
-        let mut output = String::new();
-
-        match callee {
-            Literal(Symbol(s)) if self.functions.contains_key(s) => {
-                let symbol = self.gensym.gensym("ArgumentCollection");
-                output.push_str(format!("LispDatum* {}[{}];\n", symbol, args.len()).as_str());
-
-                for (i, arg) in args.iter().enumerate() {
-                    output.push_str(format!("{}[{}] = {};\n", symbol, i, arg.accept(self)?).as_str());
-                }
-
-                output.push_str(format!("{}({}, {});\n", self.functions.get(s).unwrap(), symbol, args.len()).as_str());
-
-                Ok(output)
-            }
-            _ => Err("Callee is not a built in function and may not be invoked at this time.".to_string()),
-        }
+        let x = self.split_call(callee, args)?;
+        let mut y = x.0;
+        y.push_str(x.1.as_str());
+        Ok(y)
     }
 
     fn visit_definition(&mut self, name: &String, value: &ASTNode) -> Result<String, String> {
-        let v = value.accept(self)?;
-        Ok(format!("LispDatum** {} = {};\n", name, v))
+        match value {
+            Call(callee, args) => {
+                let mut output = String::new();
+                let (pre, value) = self.split_call(callee, args)?;
+
+                output.push_str(pre.as_str());
+                output.push_str(format!("struct LispDatum* {} = {};", name, value).as_str());
+                Ok(output)
+            }
+            Literal(Symbol(s)) => Ok(format!("struct LispDatum* {} = {};", name, s)),
+            Literal(d) => Ok(format!("struct LispDatum* {} = {};", name, ((self.generators)(d)))),
+            Definition(_, _) => Err("Cannot assign to a definition.".to_string()),
+        }
     }
 }

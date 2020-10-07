@@ -1,4 +1,6 @@
-cargo run > out.c &&
+echo "Arguments Provided: " $*
+
+cargo run $@ > out.c &&
 if [ ! -d tmp ]; then 
 	mkdir tmp
 fi &&
