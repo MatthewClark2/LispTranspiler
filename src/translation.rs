@@ -211,7 +211,10 @@ impl ASTVisitor<String> for TranspilationVisitor {
             LispDatum::Real(x) => format!("({})", x),
             LispDatum::Rational(p, q) => format!("({},{})", p, q),
             LispDatum::Integer(i) => format!("({})", i),
-            LispDatum::Symbol(s) => format!("({})", s),
+            LispDatum::Symbol(s) => {
+                // For now, assume that symbols cannot be generated at runtime.
+                return Ok(format!("{}", s))
+            },
             LispDatum::Nil => format!("()"),
         }.as_str());
 
