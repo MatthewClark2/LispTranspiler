@@ -11,4 +11,5 @@ fn main() {
     let parse_tree = parse::parse(tokens).unwrap();
     let ast = ast::ASTNode::from(parse_tree).unwrap();
     let tu = TranslationUnit::from(ast);
+    println!("{}", tu.translate().unwrap());
 }

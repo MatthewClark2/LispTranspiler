@@ -16,11 +16,7 @@ impl Gensym {
         x
     }
 
-    fn gensym(&mut self) -> String {
-        format!("__gensym_{}", self.inc())
-    }
-
-    fn gensym_from(&mut self, base: &str) -> String {
+    fn gensym(&mut self, base: &str) -> String {
         format!("__{}_gensym_{}", base, self.inc())
     }
 
@@ -32,14 +28,13 @@ impl Gensym {
 /// Struct used to handle the translation of a single compilation unit. Will need to be linked for
 /// multi-file projects.
 pub struct TranslationUnit {
-    visitors: Vec<Box<dyn ASTVisitor<Vec<ASTNode>>>>,
     statements: Vec<ASTNode>,
     _gensym: Gensym,
 }
 
 impl TranslationUnit {
     pub fn from(statements: Vec<ASTNode>) -> TranslationUnit {
-        let mut me = TranslationUnit { visitors: vec![], statements, _gensym: Gensym::new(0) };
+        let mut me = TranslationUnit { statements, _gensym: Gensym::new(0) };
 
         // Create each listener iteratively
         me.apply(Box::new(CallExpansion::new(&me)));
@@ -61,6 +56,25 @@ impl TranslationUnit {
 
         None
     }
+
+    pub fn translate(&self) -> Result<String, String> {
+        let mut output = String::from(preamble());
+
+        let mut translation_visitor = TranspilationVisitor::new(self._gensym.index);
+
+        for statement in &self.statements {
+            let x: Result<String, String> = statement.accept(&mut translation_visitor);
+
+            match x {
+                Ok(out) => output.push_str(out.as_str()),
+                Err(msg) => return Err(msg),
+            }
+        }
+
+        output.push_str(postamble());
+
+        Ok(output)
+    }
 }
 
 struct CallExpansion {
@@ -68,37 +82,6 @@ struct CallExpansion {
 }
 
 impl CallExpansion {
-    // TODO(matthew-c21): This is probably horrifyingly unoptimized code. Fix it later.
-    fn expand(&mut self, node: ASTNode) -> Vec<ASTNode> {
-        let mut expansion: Vec<ASTNode> = vec![];
-
-        match node {
-            Call(_, args) => {
-                let mut new_args: Vec<ASTNode> = vec![];
-
-                for arg in args {
-                    match arg {
-                        Call(a, b) => {
-                            let symbol = self.gensym.gensym_from("Expansion");
-                            new_args.push(Literal(LispDatum::Symbol(symbol.clone())));
-
-                            // This can be safely unwrapped as expand should always generate at least one ASTNode (the input node).
-                            let sub_expansion = self.expand(Call(a, b));
-                            let (last, init) = sub_expansion.split_last().unwrap();
-                            expansion.push(Definition(symbol, Box::new(last.clone())));
-                            expansion.append(&mut init.to_vec());
-                        }
-                        _ => new_args.push(arg),
-                    }
-                }
-            }
-
-            _ => expansion.push(node),
-        }
-
-        expansion
-    }
-
     fn new(tu: &TranslationUnit) -> Self {
         CallExpansion { gensym: tu._gensym.clone() }
     }
@@ -116,12 +99,12 @@ impl ASTVisitor<Vec<ASTNode>> for CallExpansion {
 
         for arg in args {
             match &arg {
-                Call(a, b) => {
+                Call(_, _) => {
                     let sub_expansion: Result<Vec<ASTNode>, String> = arg.accept(self);
 
                     match sub_expansion {
                         Ok(sub_expansion) => {
-                            let symbol = self.gensym.gensym_from("CallExpansion");
+                            let symbol = self.gensym.gensym("CallExpansion");
                             updated_args.push(Literal(Symbol(symbol.clone())));
 
                             let x = sub_expansion.split_last();
@@ -129,7 +112,7 @@ impl ASTVisitor<Vec<ASTNode>> for CallExpansion {
                                 Some((last, init)) => {
                                     expansion.append(&mut init.to_vec());
                                     expansion.push(Definition(symbol, Box::new(last.clone())));
-                                },
+                                }
                                 None => panic!("Empty subcall.")
                             }
                         }
@@ -170,18 +153,19 @@ fn default_generators(d: &LispDatum) -> String {
         LispDatum::Rational(_, _) => "new_rational",
         LispDatum::Integer(_) => "new_integer",
         LispDatum::Symbol(_) => "new_symbol",
-        LispDatum::Nil => "get_nil()",
+        LispDatum::Nil => "get_nil",
     })
 }
 
 // TODO(matthew-c21): Add reference to translation unit.
-pub struct TranspilationVisitor {
+struct TranspilationVisitor {
     functions: HashMap<String, String>,
     generators: &'static dyn Fn(&LispDatum) -> String,
+    gensym: Gensym,
 }
 
 impl TranspilationVisitor {
-    pub fn new() -> Self {
+    pub fn new(index: u64) -> Self {
         TranspilationVisitor {
             functions: [
                 ("*", "multiply"),
@@ -194,20 +178,8 @@ impl TranspilationVisitor {
                 ("eqv", "eqv")
             ].iter().map(|pair| (String::from(pair.0), String::from(pair.1))).clone().collect(),
             generators: &default_generators,
+            gensym: Gensym::new(index),
         }
-    }
-
-    pub fn visit_all(&mut self, ast: &Vec<ASTNode>) -> Result<String, String> {
-        let mut out = String::new();
-
-        out.push_str(preamble());
-        for statement in ast {
-            out.push_str(statement.accept::<String>(self)?.as_str());
-            out.push_str(";\n");
-        }
-        out.push_str(postamble());
-
-        Ok(out)
     }
 }
 
@@ -228,29 +200,32 @@ impl ASTVisitor<String> for TranspilationVisitor {
     }
 
     fn visit_call(&mut self, callee: &ASTNode, args: &Vec<ASTNode>) -> Result<String, String> {
+        /*
+        Collect arguments into a stack allocated array.
+        Write the call.
+         */
+
+        let mut output = String::new();
+
         match callee {
-            Literal(LispDatum::Symbol(s)) => {
-                let mut out = format!("{}(", self.functions.get(s).unwrap());
+            Literal(Symbol(s)) if self.functions.contains_key(s) => {
+                let symbol = self.gensym.gensym("ArgumentCollection");
+                output.push_str(format!("LispDatum* {}[{}];\n", symbol, args.len()).as_str());
 
-                if args.len() > 0 {
-                    out.push_str(args[0].accept::<String>(self)?.as_str());
-
-                    for arg in &args[1..] {
-                        out.push(',');
-                        out.push_str(arg.accept::<String>(self)?.as_str());
-                    }
+                for (i, arg) in args.iter().enumerate() {
+                    output.push_str(format!("{}[{}] = {};\n", symbol, i, arg.accept(self)?).as_str());
                 }
 
-                out.push(')');
+                output.push_str(format!("{}({}, {});\n", self.functions.get(s).unwrap(), symbol, args.len()).as_str());
 
-                Ok(out)
+                Ok(output)
             }
-            _ => Err(format!("No option for dynamic calls yet."))
+            _ => Err("Callee is not a built in function and may not be invoked at this time.".to_string()),
         }
     }
 
     fn visit_definition(&mut self, name: &String, value: &ASTNode) -> Result<String, String> {
         let v = value.accept(self)?;
-        Ok(format!("LispDatum** {} = {};", name, v))
+        Ok(format!("LispDatum** {} = {};\n", name, v))
     }
 }
