@@ -12,7 +12,7 @@
  * @param type for n to be promoted to.
  */
 void promote(struct LispDatum* n, enum LispDataType type) {
-  if (type < n->type) return;
+  if (type <= n->type) return;
 
   switch (n->type) {
     case Integer:
@@ -170,8 +170,12 @@ struct LispDatum* subtract(struct LispDatum** args, uint32_t nargs) {
   if (nargs == 0) {
     return new_integer(0);
   } else if (nargs == 1) {
-    // Return a copy to avoid weirdness with set! functions.
-    return new_real(args[0]->float_val);
+    struct LispDatum* negation = malloc(sizeof(struct LispDatum));
+    struct LispDatum* negative_1 = new_integer(-1);
+    struct LispDatum* x[2];
+    args[0] = negative_1;
+    args[1] = negation;
+    return multiply(x, 2);
   }
 
   struct LispDatum* init = malloc(sizeof(struct LispDatum));
@@ -321,25 +325,43 @@ void display(const struct LispDatum* datum) {
   }
 }
 
+int is_numeric(const struct LispDatum* x) {
+  return x->type <= Complex;
+}
+
 int eqv(const struct LispDatum* a, const struct LispDatum* b) {
   if (a->type == Nil && a->type == b->type) return 1;
 
-  // Currently unimplemented, so default to false.
-  if (a->type > Complex || b->type > Complex) {
-    return 0;
+  if (is_numeric(a) && is_numeric(b)) {
+    // Make copies in order to promote. Only one copy is required, but two saves some duplicate code.
+    struct LispDatum x;
+    struct LispDatum y;
+    copy_lisp_datum(a, &x);
+    copy_lisp_datum(b, &y);
+
+    enum LispDataType max_type = a->type > b->type ? a->type : b->type;
+    promote(&x, max_type);
+    promote(&y, max_type);
+
+    switch (x.type) {
+      case Integer:
+        return x.int_val == y.int_val;
+      case Rational:
+        return x.num == y.num && x.den == y.den;
+      case Real:
+        return x.float_val == y.float_val;
+      case Complex:
+        return x.real == y.real && x.im == y.im;
+      // TODO(matthew-c21): For completeness sake, this should raise an error as it is theoretically unreachable.
+      default:
+        return 0;
+    }
   }
 
-  if (a->type != b->type) {
-    return 0;
-  }
+  // Non-numeric type equality.
 
-  switch (a->type) {
-    case Integer: return a->int_val == b->int_val;
-    case Rational: return a->num == b->num && a->den == b->den;
-    case Real: return a->float_val == b->float_val;
-    case Complex: return a->real == b->real && a->im == b->im;
-    default: return 0;
-  }
+  // Only numeric types are implemented, so just return false.
+  return 0;
 }
 
 struct LispDatum* format(struct LispDatum** args, uint32_t nargs) {
