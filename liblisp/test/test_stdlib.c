@@ -310,7 +310,40 @@ void Test_int_real_multiplication(CuTest* tc) {
 }
 
 void Test_int_rational_multiplication(CuTest* tc) {
-  tc = NULL;
+  // TODO(matthew-c21): Expand with relevant math.
+  struct LispDatum* args[3];
+  args[0] = new_integer(5);
+  args[1] = new_rational(7, 1);
+  args[2] = new_rational(2, 1);
+
+  CuAssert(tc, "5 * 7 = 35", eqv(multiply(args, 2), new_rational(35, 1)));
+
+  args[0]->int_val = -5;
+  args[1]->num = -7;
+
+  CuAssert(tc, "-5 * -7 = 35", eqv(multiply(args, 2), new_rational(35, 1)));
+
+  args[0]->int_val = 5;
+  args[1]->num = -7;
+
+  CuAssert(tc, "5 * -7 = -35", eqv(multiply(args, 2), new_rational(-35, 1)));
+
+  args[0]->int_val = -5;
+  args[1]->num = 7;
+
+  CuAssert(tc, "-5 * 7 = -35", eqv(multiply(args, 2), new_rational(-35, 1)));
+
+  args[0]->int_val = 2;
+  args[1]->num = 2;
+  args[2]->num = 2;
+
+  CuAssert(tc, "2 * 2 * 2 = 8", eqv(multiply(args, 3), new_rational(8, 1)));
+
+  args[0]->int_val = -2;
+  args[1]->num = -2;
+  args[2]->num = -2;
+
+  CuAssert(tc, "-2 * -2 * -2 = -8", eqv(multiply(args, 3), new_rational(-8, 1)));
 }
 
 void Test_int_complex_multiplication(CuTest* tc) {
