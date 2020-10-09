@@ -3,6 +3,9 @@
 #include "stdlisp.h"
 #include "data.h"
 
+// TODO(matthew-c21): Rather than manually set values and types, have an assistive function than can safely do the same
+//  thing and automatically perform simplification and other tasks.
+
 /**
  * Mutating function for promoting numbers.
  *
@@ -73,6 +76,36 @@ void copy_lisp_datum(const struct LispDatum* source, struct LispDatum* dest) {
 }
 
 /**
+ * Euclid's GCD algorithm, directly copied from [this answer](https://stackoverflow.com/a/19738969).
+ */
+int gcd(int a, int b) {
+  int temp;
+  while (b != 0) {
+    temp = a % b;
+
+    a = b;
+    b = temp;
+  }
+  return a;
+}
+
+/**
+ * Reduce a reducible LispDatum (rational,).
+ * @param x the value to be simplified.
+ */
+void simplify(struct LispDatum* x) {
+  if (x->type != Rational) {
+    return;
+  }
+
+  int g = gcd(x->num, x->den);
+  if (g != 1) {
+    x->num /= g;
+    x->den /= g;
+  }
+}
+
+/**
  * Fold a function f over the given arguments.
  *
  * This is a utility function aimed at reducing boilerplate for numeric functions that can be evaluated by folding a two
@@ -109,6 +142,7 @@ int iterative_math_function(struct LispDatum** args, uint32_t nargs, struct Lisp
     }
 
     f(acc, &intermediate);
+    simplify(acc);
   }
 
   return 0;
@@ -213,7 +247,7 @@ void multiply_aux(struct LispDatum* acc, const struct LispDatum* intermediate) {
 struct LispDatum* multiply(struct LispDatum** args, uint32_t nargs) {
   struct LispDatum* init = new_integer(1);
 
-  if (iterative_math_function(args, nargs, init, subtract_aux)) {
+  if (iterative_math_function(args, nargs, init, multiply_aux)) {
     free(init);
     return NULL;
   }
@@ -241,8 +275,8 @@ void divide_aux(struct LispDatum* acc, const struct LispDatum* intermediate) {
       break;
     case Complex:
       d = intermediate->real * intermediate->real + intermediate->im * intermediate->im;
-      acc->real = (acc->real * intermediate->real + acc->im * intermediate->im)/d;
-      acc->im = (acc->im * intermediate->real - acc->real * intermediate->im)/d;
+      acc->real = (acc->real * intermediate->real + acc->im * intermediate->im) / d;
+      acc->im = (acc->im * intermediate->real - acc->real * intermediate->im) / d;
       break;
     default:
       break;
@@ -253,8 +287,7 @@ struct LispDatum* divide(struct LispDatum** args, uint32_t nargs) {
   if (nargs == 0) {
     return new_integer(0);
   } else if (nargs == 1) {
-    // Return a copy to avoid weirdness with set! functions.
-    return new_real(args[0]->float_val);
+    return args[0];
   }
 
   struct LispDatum* init = malloc(sizeof(struct LispDatum));
@@ -352,7 +385,7 @@ int eqv(const struct LispDatum* a, const struct LispDatum* b) {
         return x.float_val == y.float_val;
       case Complex:
         return x.real == y.real && x.im == y.im;
-      // TODO(matthew-c21): For completeness sake, this should raise an error as it is theoretically unreachable.
+        // TODO(matthew-c21): For completeness sake, this should raise an error as it is theoretically unreachable.
       default:
         return 0;
     }
