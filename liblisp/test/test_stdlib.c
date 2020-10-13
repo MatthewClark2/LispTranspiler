@@ -275,38 +275,140 @@ void Test_cons_inequality(CuTest* tc) {
 
 // MATH
 void Test_int_addition(CuTest* tc) {
-  tc = NULL;
+  struct LispDatum* args[2];
+  args[0] = new_integer(-3);
+  args[1] = new_integer(2);
+
+  CuAssert(tc, "-3 + 2 = -1", eqv(add(args, 2), new_integer(-1)));
+
+  args[1] = new_rational(4, 5);
+  CuAssert(tc, "-3 + 4/5 = -11/5", eqv(add(args, 2), new_rational(-11, 5)));
+
+  args[1] = new_real(3.5);
+  CuAssert(tc, "-3 + 3.5 = 0.5", eqv(add(args, 2), new_real(0.5)));
+
+  args[1] = new_complex(3, 1);
+  CuAssert(tc, "-3 + 3+i = i", eqv(add(args, 2), new_complex(0, 1)));
 }
 
 void Test_real_addition(CuTest* tc) {
-  tc = NULL;
+  struct LispDatum* args[2];
+  args[0] = new_real(-3);
+  args[1] = new_integer(2);
+
+  CuAssert(tc, "-3.0 + 2 = -1", eqv(add(args, 2), new_real(-1)));
+
+  args[1] = new_rational(4, 5);
+  CuAssert(tc, "-3.0 + 4/5 = -11/5", eqv(add(args, 2), new_real(-2.5)));
+
+  args[1] = new_real(3.5);
+  CuAssert(tc, "-3.0 + 3.5 = 0.5", eqv(add(args, 2), new_real(0.5)));
+
+  args[1] = new_complex(3, 1);
+  CuAssert(tc, "-3.0 + 3+i = i", eqv(add(args, 2), new_complex(0, 1)));
 }
 
 void Test_rational_addition(CuTest* tc) {
-  tc = NULL;
+  struct LispDatum* args[2];
+  args[0] = new_rational(-3, 1);
+  args[1] = new_integer(2);
+
+  CuAssert(tc, "-3/1 + 2 = -1", eqv(add(args, 2), new_rational(-1, 1)));
+
+  args[1] = new_rational(4, 5);
+  CuAssert(tc, "-3/1 + 4/5 = -11/5", eqv(add(args, 2), new_rational(-11, 5)));
+
+  args[1] = new_real(3.5);
+  CuAssert(tc, "-3/1 + 3.5 = 0.5", eqv(add(args, 2), new_real(0.5)));
+
+  args[1] = new_complex(3, 1);
+  CuAssert(tc, "-3/1 + 3+i = i", eqv(add(args, 2), new_complex(0, 1)));
 }
 
 void Test_complex_addition(CuTest* tc) {
-  tc = NULL;
+  struct LispDatum* args[2];
+  args[0] = new_complex(-3, 0);
+  args[1] = new_integer(2);
+
+  CuAssert(tc, "-3+0i + 2 = -1", eqv(add(args, 2), new_complex(-1, 0)));
+
+  args[1] = new_rational(4, 5);
+  CuAssert(tc, "-3+0i + 4/5 = -11/5", eqv(add(args, 2), new_complex(-2.5, 0)));
+
+  args[1] = new_real(3.5);
+  CuAssert(tc, "-3+0i + 3.5 = 0.5", eqv(add(args, 2), new_complex(0.5, 0)));
+
+  args[1] = new_complex(3, 1);
+  CuAssert(tc, "-3+0i + 3+i = i", eqv(add(args, 2), new_complex(0, 1)));
 }
 
-
 void Test_int_subtraction(CuTest* tc) {
-  tc = NULL;
+  struct LispDatum* args[2];
+  args[0] = new_integer(16);
+  args[1] = new_integer(4);
+
+  CuAssert(tc, "16 - 4 = 12", eqv(subtract(args, 2), new_integer(12)));
+
+  args[1] = new_rational(9, 2);
+  CuAssert(tc, "16 - 9/2 = 21/2", eqv(subtract(args, 2), new_rational(21, 2)));
+
+  args[1] = new_real(-4.5);
+  CuAssert(tc, "16 - -4.5 = 20.5", eqv(subtract(args, 2), new_real(20.5)));
+
+  args[1] = new_complex(9, 2);
+  CuAssert(tc, "16 - 9+2i = 7-2i", eqv(subtract(args, 2), new_complex(7, -2)));
 }
 
 void Test_real_subtraction(CuTest* tc) {
-  tc = NULL;
+  struct LispDatum* args[2];
+  args[0] = new_real(16);
+  args[1] = new_integer(4);
+
+  CuAssert(tc, "16.0 - 4 = 12.0", eqv(subtract(args, 2), new_real(12)));
+
+  args[1] = new_rational(9, 2);
+  CuAssert(tc, "16.0 - 9/2 = 10.5", eqv(subtract(args, 2), new_real(10.5)));
+
+  args[1] = new_real(-4.5);
+  CuAssert(tc, "16.0 - -4.5 = 20.5", eqv(subtract(args, 2), new_real(20.5)));
+
+  args[1] = new_complex(9, 2);
+  CuAssert(tc, "16.0 - 9+2i = 7-2i", eqv(subtract(args, 2), new_complex(7, -2)));
 }
 
 void Test_rational_subtraction(CuTest* tc) {
-  tc = NULL;
+  struct LispDatum* args[2];
+  args[0] = new_rational(16, 1);
+  args[1] = new_integer(4);
+
+  CuAssert(tc, "16/1 - 4 = 12/1", eqv(subtract(args, 2), new_rational(12, 1)));
+
+  args[1] = new_rational(9, 2);
+  CuAssert(tc, "16/1 - 9/2 = 21/2", eqv(subtract(args, 2), new_rational(21, 2)));
+
+  args[1] = new_real(-4.5);
+  CuAssert(tc, "16/1 - -4.5 = 20.5", eqv(subtract(args, 2), new_real(20.5)));
+
+  args[1] = new_complex(9, 2);
+  CuAssert(tc, "16/1 - 9+2i = 7-2i", eqv(subtract(args, 2), new_complex(7, -2)));
 }
 
 void Test_complex_subtraction(CuTest* tc) {
-  tc = NULL;
-}
+  struct LispDatum* args[2];
+  args[0] = new_complex(16, 0);
+  args[1] = new_integer(4);
 
+  CuAssert(tc, "16/1 - 4 = 12/1", eqv(subtract(args, 2), new_complex(12, 0)));
+
+  args[1] = new_rational(9, 2);
+  CuAssert(tc, "16/1 - 9/2 = 21/2", eqv(subtract(args, 2), new_complex(10.5, 0)));
+
+  args[1] = new_real(-4.5);
+  CuAssert(tc, "16/1 - -4.5 = 20.5", eqv(subtract(args, 2), new_complex(10.5, 0)));
+
+  args[1] = new_complex(9, 2);
+  CuAssert(tc, "16/1 - 9+2i = 7-2i", eqv(subtract(args, 2), new_complex(7, -2)));
+}
 
 void Test_int_division(CuTest* tc) {
   tc = NULL;
