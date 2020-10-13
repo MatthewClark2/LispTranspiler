@@ -76,36 +76,6 @@ void copy_lisp_datum(const struct LispDatum* source, struct LispDatum* dest) {
 }
 
 /**
- * Euclid's GCD algorithm, directly copied from [this answer](https://stackoverflow.com/a/19738969).
- */
-int gcd(int a, int b) {
-  int temp;
-  while (b != 0) {
-    temp = a % b;
-
-    a = b;
-    b = temp;
-  }
-  return a;
-}
-
-/**
- * Reduce a reducible LispDatum (rational,).
- * @param x the value to be simplified.
- */
-void simplify(struct LispDatum* x) {
-  if (x->type != Rational) {
-    return;
-  }
-
-  int g = gcd(x->num, x->den);
-  if (g != 1) {
-    x->num /= g;
-    x->den /= g;
-  }
-}
-
-/**
  * Fold a function f over the given arguments.
  *
  * This is a utility function aimed at reducing boilerplate for numeric functions that can be evaluated by folding a two

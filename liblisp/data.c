@@ -21,6 +21,7 @@ struct LispDatum* new_rational(int32_t a, int32_t b) {
   x->type = Rational;
   x->num = a;
   x->den = b;
+  simplify(x);
   return x;
 }
 
@@ -68,5 +69,35 @@ struct LispDatum* get_nil() {
 void discard_datum(struct LispDatum* x) {
   if (x->type != Nil) {
     free(x);
+  }
+}
+
+/**
+ * Euclid's GCD algorithm, directly copied from [this answer](https://stackoverflow.com/a/19738969).
+ */
+int gcd(int a, int b) {
+  int temp;
+  while (b != 0) {
+    temp = a % b;
+
+    a = b;
+    b = temp;
+  }
+  return a;
+}
+
+/**
+ * Reduce a reducible LispDatum (rational,).
+ * @param x the value to be simplified.
+ */
+void simplify(struct LispDatum* x) {
+  if (x->type != Rational) {
+    return;
+  }
+
+  int g = gcd(x->num, x->den);
+  if (g != 1) {
+    x->num /= g;
+    x->den /= g;
   }
 }
