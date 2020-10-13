@@ -3,9 +3,6 @@
 #include "stdlisp.h"
 #include "data.h"
 
-// TODO(matthew-c21): Rather than manually set values and types, have an assistive function than can safely do the same
-//  thing and automatically perform simplification and other tasks.
-
 /**
  * Mutating function for promoting numbers.
  *
@@ -124,7 +121,7 @@ void add_aux(struct LispDatum* acc, const struct LispDatum* intermediate) {
       acc->int_val += intermediate->int_val;
       break;
     case Rational:
-      acc->num = intermediate->den * acc->num + acc->den + intermediate->num;
+      acc->num = intermediate->den * acc->num + acc->den * intermediate->num;
       acc->den = intermediate->den * acc->den;
       break;
     case Real:
@@ -155,7 +152,7 @@ void subtract_aux(struct LispDatum* acc, const struct LispDatum* intermediate) {
       acc->int_val -= intermediate->int_val;
       break;
     case Rational:
-      acc->num = intermediate->den * acc->num - acc->den + intermediate->num;
+      acc->num = intermediate->den * acc->num - acc->den * intermediate->num;
       acc->den = intermediate->den * acc->den;
       break;
     case Real:
@@ -171,19 +168,20 @@ void subtract_aux(struct LispDatum* acc, const struct LispDatum* intermediate) {
 }
 
 struct LispDatum* subtract(struct LispDatum** args, uint32_t nargs) {
-  if (nargs == 0) {
-    return new_integer(0);
-  } else if (nargs == 1) {
-    struct LispDatum* negation = malloc(sizeof(struct LispDatum));
-    struct LispDatum* negative_1 = new_integer(-1);
-    struct LispDatum* x[2];
-    args[0] = negative_1;
-    args[1] = negation;
-    return multiply(x, 2);
-  }
+  struct LispDatum* init;
 
-  struct LispDatum* init = malloc(sizeof(struct LispDatum));
-  copy_lisp_datum(args[0], init);
+  if (nargs == 0) {
+    return NULL;
+  } else if (nargs == 1) {
+    // The argument needs to be negated, so it is essentially being subtracted from 0.
+    init = new_integer(0);
+  } else {
+    init = malloc(sizeof(struct LispDatum));
+    copy_lisp_datum(args[0], init);
+
+    args = args+1;  // The first argument does not need to be subtracted from itself.
+    nargs -= 1;     // Reduce the number of arguments to compensate.
+  }
 
   if (iterative_math_function(args, nargs, init, subtract_aux)) {
     free(init);

@@ -95,9 +95,16 @@ void simplify(struct LispDatum* x) {
     return;
   }
 
+  // Reduce
   int g = gcd(x->num, x->den);
   if (g != 1) {
     x->num /= g;
     x->den /= g;
+  }
+
+  // Ensure the numerator contains the sign.
+  if (x->den < 0) {
+    x->num *= -1;
+    x->den *= -1;
   }
 }
