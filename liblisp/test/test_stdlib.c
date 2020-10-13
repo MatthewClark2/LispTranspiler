@@ -485,8 +485,8 @@ void Test_rational_int_multiplication(CuTest* tc) {
   args[1] = new_integer(5);
 
   struct LispDatum* result = multiply(args, 2);
-  CuAssertIntEquals(tc, 6, result->num);
-  CuAssertIntEquals(tc, 1, result->den);
+  CuAssertIntEquals(tc, 10, result->num);
+  CuAssertIntEquals(tc, 3, result->den);
 }
 
 void Test_rational_real_multiplication(CuTest* tc) {

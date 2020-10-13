@@ -194,6 +194,7 @@ struct LispDatum* subtract(struct LispDatum** args, uint32_t nargs) {
 }
 
 void multiply_aux(struct LispDatum* acc, const struct LispDatum* intermediate) {
+  double tmp;
   switch (acc->type) {
     case Integer:
       acc->int_val *= intermediate->int_val;
@@ -206,8 +207,9 @@ void multiply_aux(struct LispDatum* acc, const struct LispDatum* intermediate) {
       acc->float_val *= intermediate->float_val;
       break;
     case Complex:
-      acc->real = acc->real * intermediate->real - acc->im * intermediate->im;
-      acc->im = acc->real * intermediate->im + acc->im * intermediate->real;
+      tmp = acc->real;
+      acc->real = (tmp * intermediate->real) - (acc->im * intermediate->im);
+      acc->im = (tmp * intermediate->im) + (acc->im * intermediate->real);
       break;
     default:
       break;
