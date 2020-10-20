@@ -1,6 +1,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include "data.h"
+#include "err.h"
 
 struct LispDatum* new_integer(int32_t i) {
   struct LispDatum* x = malloc(sizeof(struct LispDatum));
@@ -93,6 +94,11 @@ int gcd(int a, int b) {
 void simplify(struct LispDatum* x) {
   if (x->type != Rational) {
     return;
+  }
+
+  // Check for division by 0.
+  if (x->den == 0) {
+    raise(ZeroDivision, "Division by 0 in simplification of rational number");
   }
 
   // Reduce

@@ -2,6 +2,7 @@
 #include <stdlib.h>
 #include "stdlisp.h"
 #include "data.h"
+#include "err.h"
 
 /**
  * Mutating function for promoting numbers.
@@ -72,6 +73,11 @@ void copy_lisp_datum(const struct LispDatum* source, struct LispDatum* dest) {
   }
 }
 
+void write_zero(struct LispDatum* x) {
+  x->type = Integer;
+  x->int_val = 0;
+}
+
 /**
  * Fold a function f over the given arguments.
  *
@@ -140,7 +146,7 @@ struct LispDatum* add(struct LispDatum** args, uint32_t nargs) {
   struct LispDatum* init = new_integer(0);
 
   if (iterative_math_function(args, nargs, init, add_aux)) {
-    return NULL;
+    return raise(Math, "Addition error.");
   }
 
   return init;
@@ -171,7 +177,7 @@ struct LispDatum* subtract(struct LispDatum** args, uint32_t nargs) {
   struct LispDatum* init;
 
   if (nargs == 0) {
-    return NULL;
+    return raise(Generic, "Too few calls to subtract.");
   } else if (nargs == 1) {
     // The argument needs to be negated, so it is essentially being subtracted from 0.
     init = new_integer(0);
@@ -185,7 +191,7 @@ struct LispDatum* subtract(struct LispDatum** args, uint32_t nargs) {
 
   if (iterative_math_function(args, nargs, init, subtract_aux)) {
     free(init);
-    return NULL;
+    return raise(Math, "Error during subtraction.");
   }
 
   return init;
@@ -219,7 +225,7 @@ struct LispDatum* multiply(struct LispDatum** args, uint32_t nargs) {
 
   if (iterative_math_function(args, nargs, init, multiply_aux)) {
     free(init);
-    return NULL;
+    return raise(Math, "Error during multiplication.");
   }
 
   return init;
@@ -227,6 +233,14 @@ struct LispDatum* multiply(struct LispDatum** args, uint32_t nargs) {
 
 void divide_aux(struct LispDatum* acc, const struct LispDatum* intermediate) {
   double d;
+
+  struct LispDatum zero;
+  write_zero(&zero);
+
+  if (eqv(intermediate, &zero)) {
+    raise(ZeroDivision, NULL);
+  }
+
   switch (acc->type) {
     case Integer:
       if (acc->int_val % intermediate->int_val == 0) {
@@ -265,7 +279,7 @@ struct LispDatum* divide(struct LispDatum** args, uint32_t nargs) {
 
   if (iterative_math_function(args, nargs, init, divide_aux)) {
     free(init);
-    return NULL;
+    return raise(Math, "Error during division.");
   }
 
   return init;
@@ -273,11 +287,11 @@ struct LispDatum* divide(struct LispDatum** args, uint32_t nargs) {
 
 struct LispDatum* mod(struct LispDatum** args, uint32_t nargs) {
   if (nargs != 2) {
-    return NULL;
+    return raise(Generic, "Incorrect number of arguments passed to mod.");
   }
 
   if (args[0]->type != Integer || args[1]->type != Integer) {
-    return NULL;
+    return raise(Math, "Cannot perform modulus operation on non-integer values.");
   }
 
   return new_integer(args[0]->int_val % args[1]->int_val);
@@ -285,11 +299,11 @@ struct LispDatum* mod(struct LispDatum** args, uint32_t nargs) {
 
 struct LispDatum* division(struct LispDatum** args, uint32_t nargs) {
   if (nargs != 2) {
-    return NULL;
+    return raise(Generic, "Incorrect number of arguments passed to mod.");
   }
 
   if (args[0]->type != Integer || args[1]->type != Integer) {
-    return NULL;
+    return raise(Math, "Cannot perform division algorithm on non-integer values.");
   }
 
   struct LispDatum* d = new_integer(args[0]->int_val / args[1]->int_val);
@@ -355,8 +369,8 @@ int eqv(const struct LispDatum* a, const struct LispDatum* b) {
         return x.float_val == y.float_val;
       case Complex:
         return x.real == y.real && x.im == y.im;
-        // TODO(matthew-c21): For completeness sake, this should raise an error as it is theoretically unreachable.
       default:
+        raise(Generic, "Non-numeric value undergoing numeric equality test.");
         return 0;
     }
   }
