@@ -230,6 +230,8 @@ impl ASTVisitor<String> for TranspilationVisitor {
         Ok(y)
     }
 
+    // TODO(matthew-c21): A lot of extraneous code is generated, making it similar to a define then
+    //  call.
     fn visit_definition(&mut self, name: &String, value: &ASTNode) -> Result<String, String> {
         match value {
             Call(callee, args) => {
@@ -286,6 +288,8 @@ impl UserDefinition {
     }
 }
 
+// TODO(matthew-c21): Name mangling needs to be pervasive (i.e. every symbol in the program gets
+//  similarly mangled.
 impl ASTVisitor<Vec<ASTNode>> for UserDefinition {
     fn visit_literal(&mut self, node: &LispDatum) -> Result<Vec<ASTNode>, String> {
         Ok(vec!(Literal(node.clone())))
