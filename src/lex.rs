@@ -103,23 +103,32 @@ fn is_terminal_symbol(s: char) -> bool {
 fn consume_string(input: &str) -> Result<(Token, &str), String> {
     let mut i = input;
     let mut s = String::new();
+    let mut naturally_terminated = false;
 
     while !i.is_empty() {
-        match i.chars().nth(0).unwrap() {
-            '"' => break,
+        let next = i.chars().nth(0).unwrap();
+        i = &i[1..];
+
+        match next {
+            '"' => {
+                naturally_terminated = true;
+                break;
+            },
             '\n' => return Err("Unexpected newline while lexing string".to_string()),
             '\\' => {
-                let r = consume_escape(&i[1..])?;
+                let r = consume_escape(i)?;
                 s.push(r.0);
                 i = r.1;
             }
             c => s.push(c),
         }
-
-        i = &i[1..];
     }
 
-    Ok((Str(s), i))
+    if naturally_terminated {
+        Ok((Str(s), i))
+    } else {
+        Err("Expected end of string literal.".to_string())
+    }
 }
 
 fn consume_escape(input: &str) -> Result<(char, &str), String> {
