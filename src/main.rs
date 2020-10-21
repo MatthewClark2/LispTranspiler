@@ -24,7 +24,7 @@ fn foo() {
     let tokens = lex::start("(define -x 1)").unwrap();
     let parse_tree = parse::parse(tokens).unwrap();
     let ast = ast::ASTNode::from(parse_tree).unwrap();
-    let tu = TranslationUnit::from(ast);
+    let tu = TranslationUnit::from(ast).unwrap();
     print!("{}", tu.translate().unwrap())
 }
 
@@ -33,6 +33,6 @@ fn run(program: &str) -> Result<String, String> {
     let tokens = lex::start(program)?;
     let parse_tree = parse::parse(tokens)?;
     let ast = ast::ASTNode::from(parse_tree)?;
-    let tu = TranslationUnit::from(ast);
+    let tu = TranslationUnit::from(ast)?;
     tu.translate()
 }

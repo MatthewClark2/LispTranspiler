@@ -33,30 +33,28 @@ pub struct TranslationUnit {
 }
 
 impl TranslationUnit {
-    pub fn from(statements: Vec<ASTNode>) -> TranslationUnit {
+    pub fn from(statements: Vec<ASTNode>) -> Result<TranslationUnit, String> {
         let mut me = TranslationUnit { statements, _gensym: Gensym::new(0) };
 
-        // Create each listener iteratively
-        // TODO(matthew-c21): The gensym of one listener should be passed unto the next.
-        me.apply(Box::new(UserDefinition::new(&me._gensym)));
-        me.apply(Box::new(CallExpansion::new(&me)));
 
-        me
+        // TODO(matthew-c21): Do all the name mangling at once, rather than doing just defs first
+        me.apply(Box::new(UserDefinition::new()))?;
+        me.apply(Box::new(Mangler::new(Gensym::new(0))))?;
+        me.apply(Box::new(CallExpansion::new(Gensym::new(1024))))?;
+
+        Ok(me)
     }
 
-    fn apply(&mut self, mut visitor: Box<dyn ASTVisitor<Vec<ASTNode>>>) -> Option<String> {
+    fn apply(&mut self, mut visitor: Box<dyn ASTVisitor<Vec<ASTNode>>>) -> Result<(), String> {
         let mut statements: Vec<ASTNode> = vec![];
 
         for statement in &self.statements {
-            match statement.accept(visitor.as_mut()) {
-                Ok(mut x) => statements.append(&mut x),
-                Err(msg) => return Some(msg),
-            }
+            statements.append(&mut statement.accept(visitor.as_mut())?);
         }
 
         self.statements = statements;
 
-        None
+        Ok(())
     }
 
     pub fn translate(&self) -> Result<String, String> {
@@ -84,8 +82,8 @@ struct CallExpansion {
 }
 
 impl CallExpansion {
-    fn new(tu: &TranslationUnit) -> Self {
-        CallExpansion { gensym: tu._gensym.clone() }
+    fn new(gensym: Gensym) -> Self {
+        CallExpansion { gensym }
     }
 }
 
@@ -249,13 +247,76 @@ impl ASTVisitor<String> for TranspilationVisitor {
     }
 }
 
-struct UserDefinition {
-    gensym: Gensym,
-}
+// TODO(matthew-c21): Check for redefinitions of both user and native variables.
+struct UserDefinition {}
 
 impl UserDefinition {
+    fn is_define(callee: &ASTNode) -> bool {
+        match callee {
+            Literal(Symbol(x)) if x == "define" => true,
+            _ => false,
+        }
+    }
+
+    fn new() -> Self {
+        Self {}
+    }
+}
+
+// TODO(matthew-c21): Name mangling needs to be pervasive (i.e. every symbol in the program gets
+//  similarly mangled.
+impl ASTVisitor<Vec<ASTNode>> for UserDefinition {
+    fn visit_literal(&mut self, node: &LispDatum) -> Result<Vec<ASTNode>, String> {
+        Ok(vec!(Literal(node.clone())))
+    }
+
+    fn visit_call(&mut self, callee: &ASTNode, args: &Vec<ASTNode>) -> Result<Vec<ASTNode>, String> {
+        return if UserDefinition::is_define(callee) {
+            // A definition takes two arguments: a symbol and a value.
+            if 2 != args.len() {
+                return Err("define special form takes two arguments.".to_string());
+            }
+
+            match &args[0] {
+                Literal(Symbol(x)) => {
+                    match &args[1] {
+                        Literal(_) => {
+                            Ok(vec!(Definition(x.clone(), Box::new(args[1].clone()))))
+                        }
+                        Call(callee, _) if !Self::is_define(callee.as_ref()) => {
+                            Ok(vec!(Definition(x.clone(), Box::new(args[1].clone()))))
+                        }
+                        _ => Err("Cannot assign to that which has no value.".to_string())
+                    }
+                }
+                _ => Err("First argument to define must be a symbol".to_string())
+            }
+        } else {
+            Ok(vec!(Call(Box::from(callee.clone()), args.clone())))
+        };
+    }
+
+    fn visit_definition(&mut self, name: &String, value: &ASTNode) -> Result<Vec<ASTNode>, String> {
+        Ok(vec!(Definition(name.clone(), Box::from(value.clone()))))
+    }
+}
+
+struct Mangler {
+    gensym: Gensym,
+    mangled_names: HashMap<String, String>,
+}
+
+impl Mangler {
+    fn new(gensym: Gensym) -> Self {
+        Self { gensym, mangled_names: HashMap::new() }
+    }
+
     fn c_ify(&mut self, symbol: &String) -> String {
-        let mut result = String::new();
+        if self.mangled_names.contains_key(symbol) {
+            return self.mangled_names.get(symbol).unwrap().clone();
+        }
+
+        let mut result = String::from("user_");
 
         for ch in symbol.chars() {
             result.push_str((match ch {
@@ -273,55 +334,50 @@ impl UserDefinition {
             }).as_str());
         }
 
-        self.gensym.gensym(&result)
-    }
+        let generated = self.gensym.gensym(&result);
 
-    fn is_define(callee: &ASTNode) -> bool {
-        match callee {
-            Literal(Symbol(x)) if x == "define" => true,
-            _ => false,
-        }
-    }
+        self.mangled_names.insert(symbol.clone(), generated.clone());
 
-    fn new(gensym: &Gensym) -> Self {
-        Self { gensym: gensym.clone() }
+        generated
     }
 }
 
-// TODO(matthew-c21): Name mangling needs to be pervasive (i.e. every symbol in the program gets
-//  similarly mangled.
-impl ASTVisitor<Vec<ASTNode>> for UserDefinition {
+impl ASTVisitor<Vec<ASTNode>> for Mangler {
     fn visit_literal(&mut self, node: &LispDatum) -> Result<Vec<ASTNode>, String> {
-        Ok(vec!(Literal(node.clone())))
-    }
-
-    fn visit_call(&mut self, callee: &ASTNode, args: &Vec<ASTNode>) -> Result<Vec<ASTNode>, String> {
-        return if UserDefinition::is_define(callee) {
-            // A definition takes two arguments: a symbol and a value.
-            if 2 != args.len() {
-                return Err("define special form takes two arguments.".to_string())
-            }
-
-            match &args[0] {
-                Literal(Symbol(x)) => {
-                    match &args[1] {
-                        Literal(_) => {
-                            Ok(vec!(Definition(self.c_ify(x), Box::new(args[1].clone()))))
-                        }
-                        Call(callee, _) if !Self::is_define(callee.as_ref()) => {
-                            Ok(vec!(Definition(self.c_ify(x), Box::new(args[1].clone()))))
-                        }
-                        _ => Err("Cannot assign to that which has no value.".to_string())
-                    }
-                }
-                _ => Err("First argument to define must be a symbol".to_string())
-            }
-        } else {
-            Ok(vec!(Call(Box::from(callee.clone()), args.clone())))
+        match node {
+            Symbol(x) => Ok(vec!(Literal(Symbol(self.c_ify(x))))),
+            _ => Ok(vec!(Literal(node.clone())))
         }
     }
 
+    fn visit_call(&mut self, callee: &ASTNode, args: &Vec<ASTNode>) -> Result<Vec<ASTNode>, String> {
+        // TODO(matthew-c21): Mangle callee when user defined functions exist.
+
+        // Visit each argument, attempting to mangle names along the way.
+        let mut new_args: Vec<ASTNode> = Vec::new();
+
+        for arg in args {
+            let mut out = arg.accept::<Vec<ASTNode>>(self)?;
+
+            if out.len() != 1 {
+                return Err("Argument incorrectly expanded during name mangling.".to_string());
+            }
+
+            new_args.append(&mut out);
+        }
+
+        Ok(vec!(Call(Box::new(callee.clone()), new_args)))
+    }
+
     fn visit_definition(&mut self, name: &String, value: &ASTNode) -> Result<Vec<ASTNode>, String> {
-        Ok(vec!(Definition(name.clone(), Box::from(value.clone()))))
+        let new_value: Vec<ASTNode> = value.accept(self)?;
+
+        if new_value.len() != 1 {
+            Err("Incorrect number of values generated by definition during mangling.".to_string())
+        } else {
+            // Cloning here is a hack since `new_value` is destroyed anyway. However, it's
+            // non-trivial to move out of a Vec, assuming it's possible at all.
+            Ok(vec!(Definition(self.c_ify(name).clone(), Box::new(new_value[0].clone()))))
+        }
     }
 }
