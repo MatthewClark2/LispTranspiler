@@ -9,6 +9,7 @@ mod ast;
 mod translation;
 
 fn main() {
+    // foo();
     let programs: Vec<String> = env::args().collect();
     // let programs = vec!["(format 3i)"];
 
@@ -17,6 +18,14 @@ fn main() {
         let x = run(contents.as_str()).unwrap();
         println!("{}", x);
     }
+}
+
+fn foo() {
+    let tokens = lex::start("(define -x 1)").unwrap();
+    let parse_tree = parse::parse(tokens).unwrap();
+    let ast = ast::ASTNode::from(parse_tree).unwrap();
+    let tu = TranslationUnit::from(ast);
+    print!("{}", tu.translate().unwrap())
 }
 
 fn run(program: &str) -> Result<String, String> {
