@@ -31,7 +31,7 @@ fn statement(tokens: &[Token]) -> Result<(Statement, &[Token]), String> {
         &Token::Float(f) => Ok((Terminal(Real(f)), rest)),
         &Token::Complex(r, i) => Ok((Terminal(Complex(r, i)), rest)),
         &Token::Rational(n, d) => Ok((Terminal(Rational(n, d)), rest)),
-        &Token::Str(_) => unimplemented!(),
+        Token::Str(s) => Ok((Terminal(LispDatum::String(s.clone())), rest)),
         &Token::Open => {
             list(rest)
         }

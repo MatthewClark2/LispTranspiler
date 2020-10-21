@@ -153,6 +153,7 @@ fn default_generators(d: &LispDatum) -> String {
         LispDatum::Rational(_, _) => "new_rational",
         LispDatum::Integer(_) => "new_integer",
         LispDatum::Symbol(_) => "new_symbol",
+        LispDatum::String(_) => "new_string",
         LispDatum::Nil => "get_nil",
     })
 }
@@ -216,6 +217,7 @@ impl ASTVisitor<String> for TranspilationVisitor {
                 return Ok(format!("{}", s));
             }
             LispDatum::Nil => format!("()"),
+            LispDatum::String(s) => format!("(\"{}\")", s),
         }.as_str());
 
         Ok(out)

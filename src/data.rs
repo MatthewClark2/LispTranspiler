@@ -4,6 +4,7 @@ pub enum LispDatum {
     Real(f64),
     Rational(i32, i32),
     Integer(i32),
+    String(String),
     Symbol(String),
     Nil,
 }
