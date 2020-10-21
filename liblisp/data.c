@@ -114,3 +114,16 @@ void simplify(struct LispDatum* x) {
     x->den *= -1;
   }
 }
+
+struct LispDatum* new_string(const char* s) {
+  struct LispDatum* string = malloc(sizeof(struct LispDatum));
+  string->type = String;
+
+  size_t len = strlen(s);
+  string->length = len;
+  string->content = malloc(sizeof(char) * len + 1);
+  strncpy(string->content, s, len);
+  string->content[len] = 0;
+
+  return string;
+}

@@ -2,6 +2,7 @@
 #define LISP_DATA_H
 
 #include <stdint.h>
+#include <stddef.h>
 #include "stdlisp.h"
 
 
@@ -12,7 +13,7 @@
 /** The ordering of values of numeric types is important for determining type promotion. If type a > b, then b may be
  * promoted to a. The ordering of non-numeric types is arbitrary, and should never be used for the same purpose. */
 enum LispDataType {
-  Integer = 0, Rational = 1, Real = 2, Complex = 3, Symbol, Cons, Nil
+  Integer = 0, Rational = 1, Real = 2, Complex = 3, String, Symbol, Cons, Nil
 };
 
 /** Since LISP is a dynamically typed language, this struct exists as a way to produce that same behavior. */
@@ -26,7 +27,9 @@ struct LispDatum {
     struct { double real; double im; };  // complex
 
     /** Symbols own their own strings. */
-    char* content;  // symbol
+    char* label;  // symbol/keyword
+
+    struct { char* content; size_t length; }; // strings
 
     /** Cons cells do not make copies or transfer the ownership of the referred data. */
     struct { struct LispDatum* car; struct LispDatum* cdr; };  // cons
@@ -39,6 +42,13 @@ struct LispDatum* new_integer(int32_t i);
 struct LispDatum* new_real(double d);
 struct LispDatum* new_rational(int32_t a, int32_t b);
 struct LispDatum* new_complex(double r, double i);
+
+/**
+ * Strings passed to this function should be null terminated. Since all new strings are either string literals
+ * (automatically terminated) or composed from terminated strings, it is safe to assume that all strings that exist at
+ * runtime are null terminated. This should be tested within string functions, specifically ones like concat.
+ */
+struct LispDatum* new_string(const char* s);
 struct LispDatum* new_cons(struct LispDatum* car, struct LispDatum* cdr);
 
 void discard_datum(struct LispDatum* x);

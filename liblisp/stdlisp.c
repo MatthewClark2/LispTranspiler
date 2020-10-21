@@ -61,7 +61,7 @@ void copy_lisp_datum(const struct LispDatum* source, struct LispDatum* dest) {
       dest->im = source->im;
       break;
     case Symbol:
-      dest->content = source->content;
+      dest->label = source->label;
       break;
     case Cons:
       dest->car = source->car;
@@ -69,6 +69,10 @@ void copy_lisp_datum(const struct LispDatum* source, struct LispDatum* dest) {
       break;
     case Nil:
       *dest = *get_nil();
+      break;
+    case String:
+      dest->content = source->content;
+      dest->length = source->length;
       break;
   }
 }
@@ -326,7 +330,7 @@ void display(const struct LispDatum* datum) {
       printf("%f%+fi", datum->real, datum->im);
       break;
     case Symbol:
-      printf("%s", datum->content);
+      printf("%s", datum->label);
       break;
     case Cons:
       printf("(");
@@ -338,6 +342,9 @@ void display(const struct LispDatum* datum) {
       break;
     case Nil:
       printf("nil");
+      break;
+    case String:
+      printf("%s", datum->content);
       break;
   }
 }
@@ -384,8 +391,10 @@ int eqv(const struct LispDatum* a, const struct LispDatum* b) {
 struct LispDatum* format(struct LispDatum** args, uint32_t nargs) {
   for (uint32_t i = 0; i < nargs; ++i) {
     display(args[i]);
-    printf("\n");
+    printf(" ");
   }
+
+  printf("\n");
 
   return get_nil();
 }
