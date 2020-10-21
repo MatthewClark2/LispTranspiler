@@ -1,4 +1,4 @@
-(define x (+ 2 1i))
+(define x 1)
 (define -x (- x))
 
 (format x)
