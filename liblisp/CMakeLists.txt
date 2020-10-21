@@ -1,3 +1,5 @@
+set(CMAKE_C_FLAGS "${CMAKE_C_FLAGS} -Werror -Wextra -Wall -Wpedantic")
+
 add_library(lisp STATIC lisp.c data.c stdlisp.c)
 add_executable(scratch scratch.c)
 target_link_libraries(scratch lisp)
