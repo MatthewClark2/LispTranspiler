@@ -13,6 +13,7 @@ pub enum Token {
     Complex(f64, f64),
     // Rationals should be simplified at compile time, not lexing time.
     Rational(i32, i32),
+    // TODO(matthew-c21): Add unicode escaped strings.
     Str(String),
     Open,
     Close,
@@ -245,16 +246,56 @@ mod tests {
     fn rparen_only() {}
 
     #[test]
-    #[ignore]
-    fn valid_escaped_string() {}
+    fn simple_strings() {
+        let r = start("\"\"").unwrap();
+        assert_eq!(1, r.len());
+        assert_eq!(Str("".to_string()), r[0]);
+
+        let r = start("\"abcd\"").unwrap();
+        assert_eq!(1, r.len());
+        assert_eq!(Str("abcd".to_string()), r[0]);
+
+        let r = start("\"0 a b C ^\"").unwrap();
+        assert_eq!(1, r.len());
+        assert_eq!(Str("0 a b C ^".to_string()), r[0]);
+    }
 
     #[test]
-    #[ignore]
-    fn invalid_escaped_string() {}
+    #[should_panic]
+    fn unterminated_string1() {
+        start("\"a b c").unwrap();
+    }
 
     #[test]
-    #[ignore]
-    fn unicode_escaped_string() {}
+    #[should_panic]
+    fn unterminated_string2() {
+        start("\"").unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn incomplete_escape() {
+        start("\"\\\"").unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn newline_string() {
+        start("\"this is a \n string\"").unwrap();
+    }
+
+    #[test]
+    fn valid_escaped_string() {
+        let r = start("\"lots\\nof\\tspace\\r\"").unwrap();
+        assert_eq!(1, r.len());
+        assert_eq!(Str("lots\nof\tspace\r".to_string()), r[0]);
+    }
+
+    #[test]
+    #[should_panic]
+    fn invalid_escaped_string() {
+        start("\"\\w\"").unwrap();
+    }
 
     #[test]
     fn valid_numbers() {
