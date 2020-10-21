@@ -10,17 +10,6 @@ pub enum ASTNode {
     Definition(String, Box<ASTNode>),
 }
 
-/*
-// TODO(matthew-c21): Change ASTNode to be an enum containing these two.
-pub enum ValuedNode {
-    Literal(LispDatum),
-    Call(Box<ASTNode>, Vec<ValuedNode>),
-}
-
-pub enum StatementNode {
-    Definition(String, ValuedNode),
-}
-*/
 impl ASTNode {
     fn from_index(statements: Vec<Statement>, start: usize) -> Result<Vec<Self>, String> {
         let mut ast: Vec<Self> = Vec::new();

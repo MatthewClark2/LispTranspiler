@@ -37,6 +37,8 @@ impl TranslationUnit {
         let mut me = TranslationUnit { statements, _gensym: Gensym::new(0) };
 
         // Create each listener iteratively
+        // TODO(matthew-c21): The gensym of one listener should be passed unto the next.
+        me.apply(Box::new(UserDefinition::new(&me._gensym)));
         me.apply(Box::new(CallExpansion::new(&me)));
 
         me
@@ -213,8 +215,8 @@ impl ASTVisitor<String> for TranspilationVisitor {
             LispDatum::Integer(i) => format!("({})", i),
             LispDatum::Symbol(s) => {
                 // For now, assume that symbols cannot be generated at runtime.
-                return Ok(format!("{}", s))
-            },
+                return Ok(format!("{}", s));
+            }
             LispDatum::Nil => format!("()"),
         }.as_str());
 
@@ -239,8 +241,83 @@ impl ASTVisitor<String> for TranspilationVisitor {
                 Ok(output)
             }
             Literal(Symbol(s)) => Ok(format!("struct LispDatum* {} = {};", name, s)),
-            Literal(d) => Ok(format!("struct LispDatum* {} = {};", name, ((self.generators)(d)))),
+            Literal(d) => Ok(format!("struct LispDatum* {} = {};", name, self.visit_literal(d)?)),
             Definition(_, _) => Err("Cannot assign to a definition.".to_string()),
         }
+    }
+}
+
+struct UserDefinition {
+    gensym: Gensym,
+}
+
+impl UserDefinition {
+    fn c_ify(&mut self, symbol: &String) -> String {
+        let mut result = String::new();
+
+        for ch in symbol.chars() {
+            result.push_str((match ch {
+                '+' => "_plus_".to_string(),
+                '-' => "_dash_".to_string(),
+                '*' => "_star_".to_string(),
+                '/' => "_fshlash_".to_string(),
+                '<' => "_lt_".to_string(),
+                '>' => "_gt_".to_string(),
+                '?' => "_question_".to_string(),
+                '@' => "_at_".to_string(),
+                '!' => "_exclaim_".to_string(),
+                '=' => "_equals_".to_string(),
+                _ => ch.to_string(),
+            }).as_str());
+        }
+
+        self.gensym.gensym(&result)
+    }
+
+    fn is_define(callee: &ASTNode) -> bool {
+        match callee {
+            Literal(Symbol(x)) if x == "define" => true,
+            _ => false,
+        }
+    }
+
+    fn new(gensym: &Gensym) -> Self {
+        Self { gensym: gensym.clone() }
+    }
+}
+
+impl ASTVisitor<Vec<ASTNode>> for UserDefinition {
+    fn visit_literal(&mut self, node: &LispDatum) -> Result<Vec<ASTNode>, String> {
+        Ok(vec!(Literal(node.clone())))
+    }
+
+    fn visit_call(&mut self, callee: &ASTNode, args: &Vec<ASTNode>) -> Result<Vec<ASTNode>, String> {
+        return if UserDefinition::is_define(callee) {
+            // A definition takes two arguments: a symbol and a value.
+            if 2 != args.len() {
+                return Err("define special form takes two arguments.".to_string())
+            }
+
+            match &args[0] {
+                Literal(Symbol(x)) => {
+                    match &args[1] {
+                        Literal(_) => {
+                            Ok(vec!(Definition(self.c_ify(x), Box::new(args[1].clone()))))
+                        }
+                        Call(callee, _) if !Self::is_define(callee.as_ref()) => {
+                            Ok(vec!(Definition(self.c_ify(x), Box::new(args[1].clone()))))
+                        }
+                        _ => Err("Cannot assign to that which has no value.".to_string())
+                    }
+                }
+                _ => Err("First argument to define must be a symbol".to_string())
+            }
+        } else {
+            Ok(vec!(Call(Box::from(callee.clone()), args.clone())))
+        }
+    }
+
+    fn visit_definition(&mut self, name: &String, value: &ASTNode) -> Result<Vec<ASTNode>, String> {
+        Ok(vec!(Definition(name.clone(), Box::from(value.clone()))))
     }
 }
