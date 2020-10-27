@@ -391,7 +391,7 @@ int eqv(const struct LispDatum* a, const struct LispDatum* b) {
     // TODO(matthew-c21): Cons, symbol, keyword equality all missing.
     switch (a->type) {
       case String:
-        return strncmp(a->label, b->label, a->length < b->length ? a->length : b->length);
+        return a->length == b->length && strncmp(a->content, b->content, a->length) == 0;
       case Bool:
         return a->boolean == b->boolean;
       default:
