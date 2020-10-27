@@ -753,3 +753,22 @@ void Test_string_inequality(CuTest* tc) {
 
   CuAssert(tc, "'' != abc", !datum_cmp(a, b));
 }
+
+void Test_variable_eqv(CuTest* tc) {
+  struct LispDatum* a = new_integer(0);
+  struct LispDatum* b = new_rational(0, 1);
+  struct LispDatum* c = new_real(0.0);
+  struct LispDatum* d = new_complex(1.0, 0.0);
+
+  struct LispDatum* args[4];
+  args[0] = a;
+  args[1] = b;
+  args[2] = c;
+  args[3] = d;
+
+  CuAssert(tc, "empty true", datum_cmp(eqv(args, 0), get_true()));
+  CuAssert(tc, "single value true", datum_cmp(eqv(args, 1), get_true()));
+  CuAssert(tc, "0 = 0/1", datum_cmp(eqv(args, 2), get_true()));
+  CuAssert(tc, "0 = 0/1 = 0.0", datum_cmp(eqv(args, 3), get_true()));
+  CuAssert(tc, "0 = 0/1 = 0.0 != 1+0i", datum_cmp(eqv(args, 4), get_false()));
+}

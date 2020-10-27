@@ -416,7 +416,7 @@ struct LispDatum* format(struct LispDatum** args, uint32_t nargs) {
 struct LispDatum* eqv(struct LispDatum** args, uint32_t nargs) {
   int truthy = 1;
 
-  for (uint32_t i = 0; i < nargs - 1; ++i) {
+  for (uint32_t i = 0; i + 1 < nargs; ++i) {
     truthy = truthy && datum_cmp(args[i], args[i+1]);
   }
 
