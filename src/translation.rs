@@ -148,6 +148,8 @@ fn postamble() -> &'static str {
 
 fn default_generators(d: &LispDatum) -> String {
     String::from(match d {
+        LispDatum::Bool(true) => "get_true",
+        LispDatum::Bool(false) => "get_false",
         LispDatum::Complex(_, _) => "new_complex",
         LispDatum::Real(_) => "new_real",
         LispDatum::Rational(_, _) => "new_rational",
@@ -208,6 +210,7 @@ impl ASTVisitor<String> for TranspilationVisitor {
         let mut out: String = (self.generators)(node);
 
         out.push_str(match node {
+            LispDatum::Bool(_) => format!("()"),
             LispDatum::Complex(r, i) => format!("({},{})", r, i),
             LispDatum::Real(x) => format!("({})", x),
             LispDatum::Rational(p, q) => format!("({},{})", p, q),

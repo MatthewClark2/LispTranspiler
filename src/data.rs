@@ -6,5 +6,6 @@ pub enum LispDatum {
     Integer(i32),
     String(String),
     Symbol(String),
+    Bool(bool),
     Nil,
 }

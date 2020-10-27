@@ -1,7 +1,7 @@
 use crate::data::LispDatum;
 use crate::lex::Token;
 use crate::parse::Statement::{Terminal, List};
-use crate::data::LispDatum::{Symbol, Integer, Real, Complex, Rational};
+use crate::data::LispDatum::{Symbol, Integer, Real, Complex, Rational, Bool};
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum Statement {
@@ -27,6 +27,8 @@ fn statement(tokens: &[Token]) -> Result<(Statement, &[Token]), String> {
     let rest = &tokens[1..];
 
     match &tokens[0] {
+        &Token::True => Ok((Terminal(Bool(true)), rest)),
+        &Token::False => Ok((Terminal(Bool(false)), rest)),
         &Token::Int(i) => Ok((Terminal(Integer(i)), rest)),
         &Token::Float(f) => Ok((Terminal(Real(f)), rest)),
         &Token::Complex(r, i) => Ok((Terminal(Complex(r, i)), rest)),

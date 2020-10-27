@@ -1,6 +1,6 @@
 use crate::lex::IntLexHalt::{IntTerminal, Imaginary, Numerator, Decimal};
 use crate::lex::FloatLexHalt::FloatTerminal;
-use crate::lex::Token::{Symbol, Int, Float, Complex, Rational, Str, Open, Close, Keyword};
+use crate::lex::Token::{Symbol, Int, Float, Complex, Rational, Str, Open, Close, Keyword, True, False};
 
 // TODO(matthew-c21): Consider expanding with longs and arbitrary precision types.
 // TODO(matthew-c21): Add lexical information (index in file, len, etc.).
@@ -18,6 +18,8 @@ pub enum Token {
     Open,
     Close,
     Keyword(String),
+    True,
+    False,
 
     // For now, they can only contain letters.
     Symbol(String),
@@ -34,6 +36,8 @@ impl PartialEq for Token {
             (Str(x), Str(y)) => x == y,
             (Open, Open) => true,
             (Close, Close) => true,
+            (True, True) => true,
+            (False, False) => true,
             (Keyword(x), Keyword(y)) => x == y,
             (Symbol(x), Symbol(y)) => x == y,
             _ => false,
@@ -57,6 +61,7 @@ pub fn start(input: &str) -> Result<Vec<Token>, String> {
             ')' => Ok((Close, &i[1..])),
             '"' => consume_string(&i[1..]),  // Skip the opening quote.
             ':' => consume_keyword(i),       // Skip the opening colon.
+            '#' => consume_tag(&i[1..]),
             x if is_space(x) => {
                 i = &i[1..];
                 continue;
@@ -71,6 +76,23 @@ pub fn start(input: &str) -> Result<Vec<Token>, String> {
     }
 
     Ok(tokens)
+}
+
+fn check_terminated(input: &str) -> bool {
+    input.len() == 0 || is_terminal_symbol(input.chars().nth(0).unwrap())
+}
+
+fn consume_tag(input: &str) -> Result<(Token, &str), String> {
+    if input.len() == 0 {
+        Err("Expected something after tag.".to_string())
+    } else {
+        let i = input;
+        match i.chars().nth(0).unwrap() {
+            't' => if check_terminated(&i[1..]) { Ok((True, &i[1..])) } else { Err("Unexpected continuation of tag".to_string()) },
+            'f' => if check_terminated(&i[1..]) { Ok((False, &i[1..])) } else { Err("Unexpected continuation of tag".to_string()) },
+            _ => Err("Invalid tag".to_string()),
+        }
+    }
 }
 
 // TODO(matthew-c21): Rust probably has these built in better.
@@ -113,7 +135,7 @@ fn consume_string(input: &str) -> Result<(Token, &str), String> {
             '"' => {
                 naturally_terminated = true;
                 break;
-            },
+            }
             '\n' => return Err("Unexpected newline while lexing string".to_string()),
             '\\' => {
                 let r = consume_escape(i)?;
@@ -385,14 +407,46 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
-    fn unbalanced_input() {}
+    fn unbalanced_input() {
+        let r = start("((())()").unwrap();
+
+        assert_eq!(r.len(), 7);
+        assert_eq!(r[0], Open);
+        assert_eq!(r[1], Open);
+        assert_eq!(r[2], Open);
+        assert_eq!(r[3], Close);
+        assert_eq!(r[4], Close);
+        assert_eq!(r[5], Open);
+        assert_eq!(r[6], Close);
+    }
+
+    #[test]
+    fn booleans() {
+        let r = start("#t #f").unwrap();
+
+        assert_eq!(2, r.len());
+
+        assert_eq!(True, r[0]);
+        assert_eq!(False, r[1]);
+    }
+
+    #[test]
+    #[should_panic]
+    fn extended_valid_tags() {
+        start("#true").unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn invalid_tags() {
+        start("#x").unwrap();
+    }
 
     #[test]
     fn consecutive_tokens() {
         // I think the issue is that terminal symbols are being ignored on return.
-        let r = start("(a) (1)) (c d)").unwrap();
-        assert_eq!(r.len(), 11);
+        let r = start("(a) (1)) (c d) #t #f 1").unwrap();
+        assert_eq!(r.len(), 14);
 
         assert_eq!(r[0], Open);
         assert_eq!(r[1], Symbol("a".to_string()));
@@ -405,6 +459,9 @@ mod tests {
         assert_eq!(r[8], Symbol("c".to_string()));
         assert_eq!(r[9], Symbol("d".to_string()));
         assert_eq!(r[10], Close);
+        assert_eq!(r[11], True);
+        assert_eq!(r[12], False);
+        assert_eq!(r[13], Int(1));
     }
 
     #[test]
@@ -429,5 +486,4 @@ mod tests {
         assert_eq!(r[13], Open);
         assert_eq!(r[14], Close);
     }
-
 }
