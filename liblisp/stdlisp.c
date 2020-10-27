@@ -245,7 +245,7 @@ void divide_aux(struct LispDatum* acc, const struct LispDatum* intermediate) {
   struct LispDatum zero;
   write_zero(&zero);
 
-  if (eqv(intermediate, &zero)) {
+  if (datum_cmp(intermediate, &zero)) {
     raise(ZeroDivision, NULL);
   }
 
@@ -360,7 +360,7 @@ int is_numeric(const struct LispDatum* x) {
   return x->type <= Complex;
 }
 
-int eqv(const struct LispDatum* a, const struct LispDatum* b) {
+int datum_cmp(const struct LispDatum* a, const struct LispDatum* b) {
   if (a->type == Nil && a->type == b->type) return 1;
 
   if (is_numeric(a) && is_numeric(b)) {
@@ -411,5 +411,15 @@ struct LispDatum* format(struct LispDatum** args, uint32_t nargs) {
   printf("\n");
 
   return get_nil();
+}
+
+struct LispDatum* eqv(struct LispDatum** args, uint32_t nargs) {
+  int truthy = 1;
+
+  for (uint32_t i = 0; i < nargs - 1; ++i) {
+    truthy = truthy && datum_cmp(args[i], args[i+1]);
+  }
+
+  return truthy ? get_true() : get_false();
 }
 
