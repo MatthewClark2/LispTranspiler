@@ -1,5 +1,6 @@
 #include <stdio.h>
 #include <stdlib.h>
+#include <string.h>
 #include "stdlisp.h"
 #include "data.h"
 #include "err.h"
@@ -73,6 +74,9 @@ void copy_lisp_datum(const struct LispDatum* source, struct LispDatum* dest) {
     case String:
       dest->content = source->content;
       dest->length = source->length;
+      break;
+    case Bool:
+      dest->boolean = source->boolean;
       break;
   }
 }
@@ -346,6 +350,9 @@ void display(const struct LispDatum* datum) {
     case String:
       printf("%s", datum->content);
       break;
+    case Bool:
+      printf("%s", datum->boolean ? "#t" : "#f");
+      break;
   }
 }
 
@@ -380,11 +387,18 @@ int eqv(const struct LispDatum* a, const struct LispDatum* b) {
         raise(Generic, "Non-numeric value undergoing numeric equality test.");
         return 0;
     }
+  } else if (a->type == b->type) {
+    // TODO(matthew-c21): Cons, symbol, keyword equality all missing.
+    switch (a->type) {
+      case String:
+        return strncmp(a->label, b->label, a->length < b->length ? a->length : b->length);
+      case Bool:
+        return a->boolean == b->boolean;
+      default:
+        return 0;
+    }
   }
 
-  // Non-numeric type equality.
-
-  // Only numeric types are implemented, so just return false.
   return 0;
 }
 

@@ -143,8 +143,8 @@ void Test_rational_equality(CuTest* tc) {
   discard_datum(a);
   discard_datum(b);
 
-  a = new_rational(1,2);
-  b = new_rational(1,2);
+  a = new_rational(1, 2);
+  b = new_rational(1, 2);
 
   CuAssert(tc, "1/2 = 1/2", eqv(a, b));
 
@@ -658,4 +658,98 @@ void Test_multiplication(CuTest* tc) {
   args[3] = new_complex(-4.25, 6.125);
 
   CuAssert(tc, "3 * 1/2 * -3.5 * -4.25+6.125i = ", eqv(multiply(args, 4), new_complex(22.3125, -32.15625)));
+}
+
+void Test_bool_equality(CuTest* tc) {
+  struct LispDatum* true = get_true();
+  struct LispDatum* false = get_false();
+
+  CuAssert(tc, "#t = #t", eqv(true, get_true()));
+  CuAssert(tc, "#f = #f", eqv(false, get_false()));
+
+  CuAssertIntEquals(tc, 1, true->boolean ? 1 : 0);
+  CuAssertIntEquals(tc, 0, false->boolean ? 1 : 0);
+
+  CuAssertIntEquals(tc, Bool, true->type);
+  CuAssertIntEquals(tc, Bool, false->type);
+}
+
+void Test_bool_inequality(CuTest* tc) {
+  struct LispDatum* true = get_true();
+  struct LispDatum* false = get_false();
+  struct LispDatum* true_string = new_string("");
+  struct LispDatum* false_string = new_string("abc");
+  struct LispDatum* true_num = new_integer(1);
+  struct LispDatum* false_num = new_integer(0);
+
+  CuAssert(tc, "#t != 1", !eqv(true, true_num));
+  CuAssert(tc, "#t != \"abc\"", !eqv(true, true_string));
+  CuAssert(tc, "#f != 0", !eqv(false, false_num));
+  CuAssert(tc, "#f != \"\"", !eqv(false, false_string));
+  CuAssert(tc, "#t != nil", !eqv(true, get_nil()));
+  CuAssert(tc, "#f != nil", !eqv(false, get_nil()));
+}
+
+void Test_discard_statics(CuTest* tc) {
+  struct LispDatum* true = get_true();
+  struct LispDatum* false = get_false();
+  struct LispDatum* nil = get_nil();
+
+  discard_datum(true);
+  discard_datum(false);
+  discard_datum(nil);
+
+  true = get_true();
+  false = get_false();
+  nil = get_nil();
+
+  CuAssert(tc, "true exists", true->boolean);
+  CuAssert(tc, "false exists", !false->boolean);
+  CuAssert(tc, "nil exists", nil->type == Nil);
+}
+
+void Test_string_equality(CuTest* tc) {
+  struct LispDatum* a = new_string("abc");
+  struct LispDatum* b = new_string("abc");
+
+  CuAssert(tc, "abc = abc", eqv(a, b));
+
+  discard_datum(a);
+  discard_datum(b);
+
+  a = new_string("");
+  b = new_string("");
+
+  CuAssert(tc, "'' = ''", eqv(a, b));
+}
+
+void Test_string_inequality(CuTest* tc) {
+  struct LispDatum* a = new_string("abc");
+  struct LispDatum* b = new_string("ABC");
+
+  CuAssert(tc, "abc != ABC", !eqv(a, b));
+
+  discard_datum(a);
+  discard_datum(b);
+
+  a = new_string("abc");
+  b = new_string("abcd");
+
+  CuAssert(tc, "abc != abcd", !eqv(a, b));
+
+  discard_datum(a);
+  discard_datum(b);
+
+  a = new_string("zabc");
+  b = new_string("abc");
+
+  CuAssert(tc, "zabc != abc", !eqv(a, b));
+
+  discard_datum(a);
+  discard_datum(b);
+
+  a = new_string("");
+  b = new_string("abc");
+
+  CuAssert(tc, "'' != abc", !eqv(a, b));
 }

@@ -68,8 +68,29 @@ struct LispDatum* get_nil() {
 
 // TODO(matthew-c21): Update for garbage collection later on.
 void discard_datum(struct LispDatum* x) {
-  if (x->type != Nil) {
-    free(x);
+  switch (x->type) {
+    case Integer:
+    case Rational:
+    case Real:
+    case Complex:
+      free(x);
+      break;
+    case String:
+      free(x->content);
+      free(x);
+      break;
+    case Symbol:
+      free(x->label);
+      free(x);
+      break;
+    case Cons:
+      discard_datum(x->car);
+      discard_datum(x->cdr);
+      free(x);
+      break;
+    case Bool:
+    case Nil:
+      break;
   }
 }
 
@@ -126,4 +147,14 @@ struct LispDatum* new_string(const char* s) {
   string->content[len] = 0;
 
   return string;
+}
+
+struct LispDatum* get_true() {
+  static struct LispDatum true = {.type = Bool, .boolean = 1};
+  return &true;
+}
+
+struct LispDatum* get_false() {
+  static struct LispDatum false = {.type = Bool, .boolean = 0};
+  return &false;
 }
