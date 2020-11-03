@@ -3,6 +3,8 @@ use crate::ast::ASTNode::{Literal, Definition, Call, Condition};
 use crate::ast::{ASTNode, ASTVisitor};
 use std::collections::HashMap;
 use crate::data::LispDatum::Symbol;
+use json::{JsonValue, Error};
+use std::fs;
 
 #[derive(Copy, Clone)]
 struct Gensym {
@@ -35,7 +37,6 @@ pub struct TranslationUnit {
 impl TranslationUnit {
     pub fn from(statements: Vec<ASTNode>) -> Result<TranslationUnit, String> {
         let mut me = TranslationUnit { statements, _gensym: Gensym::new(0) };
-
 
         // TODO(matthew-c21): Do all the name mangling at once, rather than doing just defs first
         me.apply_mono(Box::new(UserDefinition::new()))?;
@@ -73,7 +74,13 @@ impl TranslationUnit {
     pub fn translate(&self) -> Result<String, String> {
         let mut output = String::from(preamble());
 
-        let mut translation_visitor = TranspilationVisitor::new(self._gensym.index);
+        let contents = fs::read_to_string("natives.json").expect("Unable to load natives.json");
+        let natives = match json::parse(contents.as_str()) {
+            Ok(v) => v,
+            Err(msg) => return Err(msg.to_string()),
+        };
+
+        let mut translation_visitor = TranspilationVisitor::new(natives, self._gensym.index);
 
         for statement in &self.statements {
             let x: Result<String, String> = statement.accept(&mut translation_visitor);
@@ -179,24 +186,15 @@ fn default_generators(d: &LispDatum) -> String {
 
 // TODO(matthew-c21): Add reference to translation unit.
 struct TranspilationVisitor {
-    functions: HashMap<String, String>,
+    natives: JsonValue,
     generators: &'static dyn Fn(&LispDatum) -> String,
     gensym: Gensym,
 }
 
 impl TranspilationVisitor {
-    pub fn new(index: u64) -> Self {
+    pub fn new(natives: JsonValue, index: u64) -> Self {
         TranspilationVisitor {
-            functions: [
-                ("*", "multiply"),
-                ("+", "add"),
-                ("-", "subtract"),
-                ("/", "divide"),
-                ("mod", "mod"),
-                ("division", "division"),
-                ("format", "format"),
-                ("eqv", "eqv")
-            ].iter().map(|pair| (String::from(pair.0), String::from(pair.1))).clone().collect(),
+            natives,
             generators: &default_generators,
             gensym: Gensym::new(index),
         }
@@ -207,7 +205,7 @@ impl TranspilationVisitor {
         let mut output = String::new();
 
         match callee {
-            Literal(Symbol(s)) if self.functions.contains_key(s) => {
+            Literal(Symbol(s)) if self.natives["functions"].has_key(s.as_str()) => {
                 let symbol = self.gensym.gensym("ArgumentCollection");
                 output.push_str(format!("struct LispDatum* {}[{}];\n", symbol, args.len()).as_str());
 
@@ -215,7 +213,7 @@ impl TranspilationVisitor {
                     output.push_str(format!("{}[{}] = {};\n", symbol, i, arg.accept(self)?).as_str());
                 }
 
-                Ok((output, format!("{}({}, {});\n", self.functions.get(s).unwrap(), symbol, args.len())))
+                Ok((output, format!("{}({}, {});\n", self.natives["functions"][s], symbol, args.len())))
             }
             _ => Err("Callee is not a built in function and may not be invoked at this time.".to_string()),
         }
