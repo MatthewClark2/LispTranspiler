@@ -8,6 +8,7 @@ pub enum ASTNode {
     Literal(LispDatum),
     Call(Box<ASTNode>, Vec<ASTNode>),
     Definition(String, Box<ASTNode>),
+    Condition(Box<ASTNode>, Box<ASTNode>, Box<ASTNode>),
 }
 
 impl ASTNode {
@@ -47,6 +48,7 @@ impl ASTNode {
             ASTNode::Literal(d) => visitor.visit_literal(d),
             ASTNode::Call(c, a) => visitor.visit_call(c, a),
             ASTNode::Definition(n, v) => visitor.visit_definition(n, v),
+            ASTNode::Condition(x, y, z) => visitor.visit_condition(x, y, z),
         }
     }
 }
@@ -59,6 +61,8 @@ pub trait ASTVisitor<T> {
     fn visit_call(&mut self, callee: &ASTNode, args: &Vec<ASTNode>) -> Result<T, String>;
 
     fn visit_definition(&mut self, name: &String, value: &ASTNode) -> Result<T, String>;
+
+    fn visit_condition(&mut self, cond: &ASTNode, if_true: &ASTNode, if_false: &ASTNode) -> Result<T, String>;
 }
 
 // All optimizers should be in the form ASTNode -> ASTNode.

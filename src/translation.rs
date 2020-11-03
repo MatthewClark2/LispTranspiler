@@ -1,8 +1,11 @@
 use crate::data::LispDatum;
-use crate::ast::ASTNode::{Literal, Definition, Call};
+use crate::ast::ASTNode::{Literal, Definition, Call, Condition};
 use crate::ast::{ASTNode, ASTVisitor};
 use std::collections::HashMap;
 use crate::data::LispDatum::Symbol;
+
+// TODO(matthew-c21): Most visitors modify a single node rather than expanding it. Consider changing
+//  appropriate visitors to ASTVisitor<ASTNode> directly.
 
 #[derive(Copy, Clone)]
 struct Gensym {
@@ -39,7 +42,8 @@ impl TranslationUnit {
 
         // TODO(matthew-c21): Do all the name mangling at once, rather than doing just defs first
         me.apply(Box::new(UserDefinition::new()))?;
-        me.apply(Box::new(Mangler::new(Gensym::new(0))))?;
+        me.apply(Box::new(ConditionalExpansion::new(Gensym::new(0))))?;
+        me.apply(Box::new(Mangler::new(Gensym::new(512))))?;
         me.apply(Box::new(CallExpansion::new(Gensym::new(1024))))?;
 
         Ok(me)
@@ -132,6 +136,10 @@ impl ASTVisitor<Vec<ASTNode>> for CallExpansion {
 
     fn visit_definition(&mut self, name: &String, value: &ASTNode) -> Result<Vec<ASTNode>, String> {
         Ok(vec![Definition(name.clone(), Box::new(value.clone()))])
+    }
+
+    fn visit_condition(&mut self, cond: &ASTNode, if_true: &ASTNode, if_false: &ASTNode) -> Result<Vec<ASTNode>, String> {
+        Ok(vec!(Condition(Box::new(cond.clone()), Box::new(if_true.clone()), Box::new(if_false.clone()))))
     }
 }
 
@@ -248,7 +256,12 @@ impl ASTVisitor<String> for TranspilationVisitor {
             Literal(Symbol(s)) => Ok(format!("struct LispDatum* {} = {};", name, s)),
             Literal(d) => Ok(format!("struct LispDatum* {} = {};", name, self.visit_literal(d)?)),
             Definition(_, _) => Err("Cannot assign to a definition.".to_string()),
+            Condition(c, t, f) => Ok(format!("struct LispDatum* {} = {};", name, self.visit_condition(c, t, f)?))
         }
+    }
+
+    fn visit_condition(&mut self, cond: &ASTNode, if_true: &ASTNode, if_false: &ASTNode) -> Result<String, String> {
+        Ok(format!("{} ? {} : {}", cond.accept(self)?, if_true.accept(self)?, if_false.accept(self)?))
     }
 }
 
@@ -268,8 +281,6 @@ impl UserDefinition {
     }
 }
 
-// TODO(matthew-c21): Name mangling needs to be pervasive (i.e. every symbol in the program gets
-//  similarly mangled.
 impl ASTVisitor<Vec<ASTNode>> for UserDefinition {
     fn visit_literal(&mut self, node: &LispDatum) -> Result<Vec<ASTNode>, String> {
         Ok(vec!(Literal(node.clone())))
@@ -303,6 +314,10 @@ impl ASTVisitor<Vec<ASTNode>> for UserDefinition {
 
     fn visit_definition(&mut self, name: &String, value: &ASTNode) -> Result<Vec<ASTNode>, String> {
         Ok(vec!(Definition(name.clone(), Box::from(value.clone()))))
+    }
+
+    fn visit_condition(&mut self, cond: &ASTNode, if_true: &ASTNode, if_false: &ASTNode) -> Result<Vec<ASTNode>, String> {
+        Ok(vec!(Condition(Box::new(cond.clone()), Box::new(if_true.clone()), Box::new(if_false.clone()))))
     }
 }
 
@@ -384,5 +399,87 @@ impl ASTVisitor<Vec<ASTNode>> for Mangler {
             // non-trivial to move out of a Vec, assuming it's possible at all.
             Ok(vec!(Definition(self.c_ify(name).clone(), Box::new(new_value[0].clone()))))
         }
+    }
+
+    fn visit_condition(&mut self, cond: &ASTNode, if_true: &ASTNode, if_false: &ASTNode) -> Result<Vec<ASTNode>, String> {
+        let mut c: Vec<ASTNode> = cond.accept(self)?;
+        let mut t: Vec<ASTNode> = if_true.accept(self)?;
+        let mut f: Vec<ASTNode> = if_false.accept(self)?;
+
+        if c.len() != 1 && t.len() != 1 && f.len() != 1 {
+            Err("Too many things yielded from mangling.".to_string())
+        } else {
+            Ok(vec!(Condition(Box::new(c.remove(0)), Box::new(t.remove(0)), Box::new(f.remove(0)))))
+        }
+    }
+}
+
+struct ConditionalExpansion {
+    gensym: Gensym,
+}
+
+impl ConditionalExpansion {
+    fn new(gensym: Gensym) -> Self {
+        Self { gensym: gensym.clone() }
+    }
+
+    fn is_conditional(node: &ASTNode) -> bool {
+        match node {
+            Literal(Symbol(x)) if x == "if" => true,
+            _ => false,
+        }
+    }
+}
+
+impl ASTVisitor<Vec<ASTNode>> for ConditionalExpansion {
+    fn visit_literal(&mut self, node: &LispDatum) -> Result<Vec<ASTNode>, String> {
+        Ok(vec!(Literal(node.clone())))
+    }
+
+    fn visit_call(&mut self, callee: &ASTNode, args: &Vec<ASTNode>) -> Result<Vec<ASTNode>, String> {
+        return if Self::is_conditional(callee) {
+            // A definition takes two arguments: a symbol and a value.
+            if 3 != args.len() {
+                Err("conditional special form takes three arguments.".to_string())
+            } else {
+                let t: Vec<ASTNode> = args[1].accept(self)?;
+                let f: Vec<ASTNode> = args[2].accept(self)?;
+
+                assert_eq!(1, t.len());
+                assert_eq!(1, f.len());
+                Ok(vec!(Condition(Box::new(args[0].clone()), Box::new(t[0].clone()), Box::new(f[0].clone()))))
+            }
+        } else {
+            let mut recursive_args: Vec<ASTNode> = Vec::new();
+
+            for arg in args {
+                match arg.accept(self) {
+                    Ok(n) => {
+                        assert_eq!(1, n.len());
+                        recursive_args.push(n[0].clone())
+                    },
+                    Err(m) => return Err(m),
+                }
+            }
+
+            Ok(vec!(Call(Box::from(callee.clone()), recursive_args.clone())))
+        };
+    }
+
+    fn visit_definition(&mut self, name: &String, value: &ASTNode) -> Result<Vec<ASTNode>, String> {
+        let new_value: Vec<ASTNode> = value.accept(self)?;
+        assert_eq!(new_value.len(), 1);
+        Ok(vec!(Definition(name.clone(), Box::from(new_value[0].clone()))))
+    }
+
+    fn visit_condition(&mut self, cond: &ASTNode, if_true: &ASTNode, if_false: &ASTNode) -> Result<Vec<ASTNode>, String> {
+        let c: Vec<ASTNode> = cond.accept(self)?;
+        let t: Vec<ASTNode> = if_true.accept(self)?;
+        let f: Vec<ASTNode> = if_false.accept(self)?;
+
+        assert_eq!(1, t.len());
+        assert_eq!(1, f.len());
+
+        Ok(vec!(Condition(Box::new(c[0].clone()), Box::new(t[0].clone()), Box::new(f[0].clone()))))
     }
 }
