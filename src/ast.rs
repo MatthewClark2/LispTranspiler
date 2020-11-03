@@ -1,6 +1,6 @@
 use crate::data::LispDatum;
 use crate::parse::Statement;
-use crate::ast::ASTNode::{Literal, Call};
+use crate::ast::ASTNode::*;
 
 // NOTE(matthew-c21): Special forms to be added here.
 #[derive(Clone)]
@@ -51,10 +51,16 @@ impl ASTNode {
             ASTNode::Condition(x, y, z) => visitor.visit_condition(x, y, z),
         }
     }
+
+    pub fn is_valued(&self) -> bool {
+        match self {
+            Definition(_, _) => false,
+            _ => true,
+        }
+    }
 }
 
 // NOTE(matthew-c21): This is subject to change in response to special forms.
-// TODO(matthew-c21): Add some kind of Error handling.
 pub trait ASTVisitor<T> {
     fn visit_literal(&mut self, node: &LispDatum) -> Result<T, String>;
 

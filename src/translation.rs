@@ -184,7 +184,8 @@ fn default_generators(d: &LispDatum) -> String {
     })
 }
 
-// TODO(matthew-c21): Add reference to translation unit.
+// TODO(matthew-c21): Modify struct to return Vec<String> instead of just String, where the last
+//  element in the vector is the value of the node (i.e. defs first, values second).
 struct TranspilationVisitor {
     natives: JsonValue,
     generators: &'static dyn Fn(&LispDatum) -> String,
@@ -268,7 +269,42 @@ impl ASTVisitor<String> for TranspilationVisitor {
     }
 
     fn visit_condition(&mut self, cond: &ASTNode, if_true: &ASTNode, if_false: &ASTNode) -> Result<String, String> {
-        Ok(format!("truthy({}) ? {} : {}", cond.accept(self)?, if_true.accept(self)?, if_false.accept(self)?))
+        let mut output = String::new();
+        let symbol = self.gensym.gensym("Conditional");
+
+        if !(cond.is_valued() && if_true.is_valued() && if_false.is_valued()) {
+            return Err("Forms used in conditional expression should be valued.".to_string());
+        }
+
+        output.push_str(format!("struct LispDatum* {} = NULL;\n", symbol).as_str());
+
+        // TODO(These can be simplified somewhat by extracting the push_str so long as there's a way
+        //  of expanding the tuple given to format!.
+        match cond {
+            Call(callee, args) => {
+                let (defs, call) = self.split_call(&callee, &args)?;
+                output.push_str(format!("{}\nif (truthy({})) {{\n", defs, &call.as_str()[0..call.len()-2]).as_str());
+            },
+            _ => output.push_str(format!("if (truthy({})) {{\n", cond.accept(self)?).as_str()),
+        }
+
+        match if_true {
+            Call(callee, args) => {
+                let (defs, call) = self.split_call(&callee, &args)?;
+                output.push_str(format!("{}\n{} = {};", defs, symbol, call).as_str());
+            },
+            _ => output.push_str(format!("{} = {};", symbol, cond.accept(self)?).as_str()),
+        }
+
+        match if_false {
+            Call(callee, args) => {
+                let (defs, call) = self.split_call(&callee, &args)?;
+                output.push_str(format!("\n}} else {{\n{} \nstruct LispDatum* {} = {};}}", defs, symbol, call).as_str());
+            },
+            _ => output.push_str(format!("\n}} else {{\nstruct LispDatum* {} = {};}}", symbol, cond.accept(self)?).as_str()),
+        }
+
+        Ok(output)
     }
 }
 
