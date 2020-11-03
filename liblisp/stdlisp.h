@@ -57,14 +57,31 @@ struct LispDatum* format(struct LispDatum** args, uint32_t nargs);
 
 void display(const struct LispDatum* datum);
 
+int datum_cmp(const struct LispDatum* a, const struct LispDatum* b);
+
 /**
  * Determines if two objects are strictly equal.
  *
  * This is equivalent to the eqv? predicate found in Scheme. See the R7RS spec for more information.
  */
- // TODO(matthew-c21): Either modify this function or create a new function with the same signature as the rest of the standard library.
-int datum_cmp(const struct LispDatum* a, const struct LispDatum* b);
-
 struct LispDatum* eqv(struct LispDatum** args, uint32_t nargs);
+
+// Comparative functions and logical manipulation
+// TODO(matthew-c21): Most comparators can be discarded once user generated functions are in order.
+struct LispDatum* less_than(struct LispDatum** args, uint32_t nargs);
+struct LispDatum* num_equals(struct LispDatum** args, uint32_t nargs);
+struct LispDatum* greater_than(struct LispDatum** args, uint32_t nargs);
+struct LispDatum* less_than_eql(struct LispDatum** args, uint32_t nargs);
+struct LispDatum* greater_than_eql(struct LispDatum** args, uint32_t nargs);
+
+/**
+ * Returns last value in a list
+ * @param args
+ * @param nargs
+ * @return
+ */
+struct LispDatum* logical_and(struct LispDatum** args, uint32_t nargs);
+struct LispDatum* logical_or(struct LispDatum** args, uint32_t nargs);
+struct LispDatum* logical_not(struct LispDatum** args, uint32_t nargs);
 
 #endif //LISP_STDLISP_H

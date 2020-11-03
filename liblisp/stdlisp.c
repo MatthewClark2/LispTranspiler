@@ -193,7 +193,7 @@ struct LispDatum* subtract(struct LispDatum** args, uint32_t nargs) {
     init = malloc(sizeof(struct LispDatum));
     copy_lisp_datum(args[0], init);
 
-    args = args+1;  // The first argument does not need to be subtracted from itself.
+    args = args + 1;  // The first argument does not need to be subtracted from itself.
     nargs -= 1;     // Reduce the number of arguments to compensate.
   }
 
@@ -417,9 +417,133 @@ struct LispDatum* eqv(struct LispDatum** args, uint32_t nargs) {
   int truthy = 1;
 
   for (uint32_t i = 0; i + 1 < nargs; ++i) {
-    truthy = truthy && datum_cmp(args[i], args[i+1]);
+    truthy = truthy && datum_cmp(args[i], args[i + 1]);
   }
 
   return truthy ? get_true() : get_false();
+}
+
+static int cmp(struct LispDatum* a, struct LispDatum* b) {
+  if (is_numeric(a) && is_numeric(b)) {
+    struct LispDatum x;
+    copy_lisp_datum(a, &x);
+
+    struct LispDatum y;
+    copy_lisp_datum(b, &y);
+
+    promote(&x, y.type);
+    promote(&y, x.type);
+
+    switch (x.type) {
+      case Integer:
+        return x.int_val == y.int_val ? 0 : x.int_val > y.int_val ? 1 : -1;
+      case Rational:
+        return x.num == y.num && x.den == y.den ? 0 : (double) x.num / x.den > (double) y.num / y.den ? 1 : -1;
+      case Real:
+        return x.float_val == y.float_val ? 0 : x.float_val > y.float_val ? 1 : -1;
+      case Complex:
+        if (x.real == y.real) {
+          return x.im == y.im ? 0 : x.im > y.im ? 1 : -1;
+        } else {
+          return  x.real > y.real ? 1 : -1;
+        }
+      default:
+        raise(Generic, "invalid state reached during cmp");
+        return 0;
+    }
+  } else {
+    raise(Generic, "invalid state reached during cmp");
+    return 0;
+  }
+}
+
+static struct LispDatum*
+comparator(struct LispDatum** args, uint32_t nargs, int (* valid)(struct LispDatum*, struct LispDatum*)) {
+  int is_true = 1;
+
+  for (uint32_t i = 0; i + 1 < nargs; ++i) {
+    // TODO(matthew-c21): Redundant checks are redundant.
+    if (!is_numeric(args[i]) || !is_numeric(args[i + 1])) {
+      return raise(Generic, "Compared values must be numeric.");
+    }
+
+    is_true = is_true && valid(args[i], args[i + 1]);
+  }
+
+  return is_true ? get_true() : get_false();
+}
+
+int less_than_aux(struct LispDatum* a, struct LispDatum* b) {
+  return cmp(a, b) < 0;
+}
+
+struct LispDatum* less_than(struct LispDatum** args, uint32_t nargs) {
+  return comparator(args, nargs, less_than_aux);
+}
+
+int num_equals_aux(struct LispDatum* a, struct LispDatum* b) {
+  return cmp(a, b) == 0;
+}
+
+struct LispDatum* num_equals(struct LispDatum** args, uint32_t nargs) {
+  return comparator(args, nargs, num_equals_aux);
+}
+
+int greater_than_aux(struct LispDatum* a, struct LispDatum* b) {
+  return cmp(a, b) > 0;
+}
+
+struct LispDatum* greater_than(struct LispDatum** args, uint32_t nargs) {
+  return comparator(args, nargs, greater_than_aux);
+}
+
+int less_than_eql_aux(struct LispDatum* a, struct LispDatum* b) {
+  return cmp(a, b) <= 0;
+}
+
+struct LispDatum* less_than_eql(struct LispDatum** args, uint32_t nargs) {
+  return comparator(args, nargs, less_than_eql_aux);
+}
+
+int greater_than_eql_aux(struct LispDatum* a, struct LispDatum* b) {
+  return cmp(a, b) >= 0;
+}
+
+struct LispDatum* greater_than_eql(struct LispDatum** args, uint32_t nargs) {
+  return comparator(args, nargs, greater_than_eql_aux);
+}
+
+// NOTE(matthew-c21): The implementation of the following functions assumes that values are immutable. Bugs may ensure
+//  if that assumption is violated.
+struct LispDatum* logical_and(struct LispDatum** args, uint32_t nargs) {
+  struct LispDatum* last = get_true();
+
+  for (uint32_t i = 0; i < nargs; ++i) {
+    if (truthy(args[i])) {  // Direct pointer comparison is bad unless the pointer is static.
+      last = args[i];
+    } else {
+      return get_false();
+    }
+  }
+
+  return last;
+}
+
+struct LispDatum* logical_or(struct LispDatum** args, uint32_t nargs) {
+  for (uint32_t i = 0; i < nargs; ++i) {
+    if (truthy(args[i])) {  // Direct pointer comparison is bad unless the pointer is static.
+      return args[i];
+    }
+  }
+
+  return get_false();
+}
+
+struct LispDatum* logical_not(struct LispDatum** args, uint32_t nargs) {
+  if (nargs != 1) {
+    return raise(Generic, "Wrong number of arguments passed to not");
+  }
+
+  return truthy(args[0]) ? get_false() : get_true();
 }
 

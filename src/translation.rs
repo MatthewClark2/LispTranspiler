@@ -268,7 +268,7 @@ impl ASTVisitor<String> for TranspilationVisitor {
     }
 
     fn visit_condition(&mut self, cond: &ASTNode, if_true: &ASTNode, if_false: &ASTNode) -> Result<String, String> {
-        Ok(format!("{} ? {} : {}", cond.accept(self)?, if_true.accept(self)?, if_false.accept(self)?))
+        Ok(format!("truthy({}) ? {} : {}", cond.accept(self)?, if_true.accept(self)?, if_false.accept(self)?))
     }
 }
 

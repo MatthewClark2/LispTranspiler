@@ -63,6 +63,8 @@ struct LispDatum* get_nil();
 
 void simplify(struct LispDatum* x);
 
+int truthy(const struct LispDatum* x);
+
 // NOTE(matthew-c21): While these functions could just be a `from_string(char*, LispDataType)`, this method avoids the
 //  possibility of mis-tagged unions being generated.
 struct LispDatum* new_symbol(char* content);

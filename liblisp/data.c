@@ -158,3 +158,7 @@ struct LispDatum* get_false() {
   static struct LispDatum false = {.type = Bool, .boolean = 0};
   return &false;
 }
+
+int truthy(const struct LispDatum* x) {
+  return x != get_false();
+}
