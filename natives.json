@@ -1,0 +1,14 @@
+{
+  "functions": {
+    "+": "add",
+    "-": "subtract",
+    "/": "divide",
+    "*": "multiply",
+    "div": "division",
+    "format": "format",
+    "mod": "mod",
+    "eqv": "eqv"
+  },
+  "variables": {
+  }
+}
