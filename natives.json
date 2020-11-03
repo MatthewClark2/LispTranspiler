@@ -15,7 +15,7 @@
     ">=": "greater_than_eql",
     "and": "logical_and",
     "or": "logical_or",
-    "not": "not"
+    "not": "logical_not"
   },
   "variables": {
   }
