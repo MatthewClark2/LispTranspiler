@@ -11,10 +11,42 @@ that may appear when attempting to use the library, as well as the reasoning beh
 
 ## Data Types
 
-Rational numbers are always to be stored in their simplest form.
+### Numbers
 
+Integers are the least precise type. Rational numbers are a super set of integers stored in their simplest form. Real 
+numbers are a super set of rationals, and represent standard 64 bit floating point numbers. Complex numbers a superset
+of real numbers stored using two floating point real numbers.
+
+### Booleans
+
+Primitive true and false constants. There's no requirement for implementation other than the fact that they are distinct
+from other data types. "Truthyness" is a factor in this language, however only `nil` and `false` are considered to be 
+not true.
+
+### Nil
+
+`nil` is the LISP equivalent of NULL. `nil` is equivalent only to itself regardless of strictness. In use as a value, it
+is equivalent to an empty list. The consequence of this is that `(eqv? nil (list))` and `(eqv? nil '())` are both true.
+
+### Symbols
 Symbols are to be interned upon creation. This may eliminate the need for keywords, but we'll have to see when we get 
 there.
+
+### Strings
+
+Strings are stored in a PASCAL format, containing a character buffer and the length of the string. The null termination
+of a LISP string is not defined and should not be relied upon. When dealing with normal C string functions, be sure to
+use the associated length. Only ASCII characters are officially supported due to the need to generate C code.
+
+### Lists
+
+Lists are stored in memory as linked lists where the final element points to `NULL`, a sentinel value chosen due to not
+being a valid LISP value. Empty lists are thus saved as `{.car = NULL, .cdr = NULL}`.
+
+Improper lists (i.e. Scheme pairs) may be used with standard list functions as well.
+
+The destruction of a list follows from the start of the list along to the final element. As a result, the deletion of a
+circular list is not well defined.
 
 ## Function Conventions
 

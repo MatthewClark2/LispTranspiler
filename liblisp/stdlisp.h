@@ -65,4 +65,45 @@ void display(const struct LispDatum* datum);
  // TODO(matthew-c21): Either modify this function or create a new function with the same signature as the rest of the standard library.
 int eqv(const struct LispDatum* a, const struct LispDatum* b);
 
+// LIST FUNCTIONS
+
+/**
+ * Obtain the first element of a list. Fails if the argument is not a list, or if it is empty as the first element of an
+ * empty list is not defined.
+ */
+struct LispDatum* car(struct LispDatum** args, uint32_t nargs);
+
+/**
+ * Obtain the linked child nodes in a list. When used on an empty list or nil, returns an empty list. When used on an
+ * improper list, e.g. `(cdr '(a . b))`, returns the second item - in this case the symbol 'b'.
+ */
+struct LispDatum* cdr(struct LispDatum** args, uint32_t nargs);
+
+/**
+ * Obtains the length of a(n) (im)proper list. Fails on non-list arguments, or when receiving too many arguments at
+ * once.
+ */
+struct LispDatum* length(struct LispDatum** args, uint32_t nargs);
+struct LispDatum* cons(struct LispDatum** args, uint32_t nargs);
+
+/**
+ * Creates a linked list structure using the provided arguments. If `nargs` is 0, then the args array is not evaluated
+ * at all, meaning that `list(NULL, 0)` always returns a valid, empty list.
+ * @return
+ */
+struct LispDatum* list(struct LispDatum** args, uint32_t nargs);
+
+/**
+ * Combines multiple lists together. Only joins top level lists.
+ *
+ * Example: (append (1 2) (3 4)) ==> (1 2 3 4)
+ */
+struct LispDatum* append(struct LispDatum** args, uint32_t nargs);
+
+/**
+ * Constructs a list in reverse order. This items referred to in the new reversed list are the same as in the
+ * non-reversed list.
+ */
+struct LispDatum* reverse(struct LispDatum** args, uint32_t nargs);
+
 #endif //LISP_STDLISP_H
