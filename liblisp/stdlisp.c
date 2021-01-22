@@ -6,6 +6,35 @@
 #include "err.h"
 
 /**
+ * Determine if a datum refers to an occupied (not {NULL, NULL}) Cons pair.
+ */
+static int is_occupied_node(const struct LispDatum* d) {
+  return d != NULL && (d->type == Cons && d->car != NULL);
+}
+
+// TODO(matthew-c21): When garbage collection is added, this sort of behavior should be invoked alongside the gc to
+//    increase reference counts.
+/**
+ * Push a new value to the end of a list. Assumes that the given node is already at the end of the list.
+ */
+static void push(struct LispDatum* node, struct LispDatum* value) {
+  if (node == NULL || node->type != Cons || node->cdr != NULL) {
+    fprintf(stderr, "Fatal exeption occurred.");
+    exit(-1);
+  }
+
+  // Pushing to an empty node
+  if (node->car == NULL) {
+    node->car = value;
+  } else {
+    node->cdr = malloc(sizeof(struct LispDatum));
+    node->cdr->type = Cons;
+    node->cdr->car = value;
+    node->cdr->cdr = NULL;
+  }
+}
+
+/**
  * Mutating function for promoting numbers.
  *
  * This function works recursively to promote numbers one step at a time. Going from an integer to a complex number
@@ -399,6 +428,9 @@ int datum_cmp(const struct LispDatum* a, const struct LispDatum* b) {
     }
   }
 
+  // TODO(matthew-c21): Non-numeric type equality.
+
+  // Only numeric types are implemented, so just return false.
   return 0;
 }
 
@@ -411,6 +443,135 @@ struct LispDatum* format(struct LispDatum** args, uint32_t nargs) {
   printf("\n");
 
   return get_nil();
+}
+
+// Several of the following functions start with the same check. However, since there is no proper means of jumping from
+//  one part of execution to another, there's no good way eliminate this redundancy.
+
+struct LispDatum* car(struct LispDatum** args, uint32_t nargs) {
+  if (nargs != 1 || args[0]->type != Cons) {
+    return raise(Generic, "`car` takes a single list argument.");
+  }
+
+  return args[0]->car;
+}
+
+struct LispDatum* cdr(struct LispDatum** args, uint32_t nargs) {
+  if (nargs != 1 && (args[0]->type != Nil && args[0]->type != Cons)) {
+    return raise(Generic, "`cdr` takes exactly one list argument.");
+  }
+
+  if (is_occupied_node(args[0])) {
+    return args[0]->cdr;
+  }
+
+  return list(NULL, 0);
+}
+
+struct LispDatum* length(struct LispDatum** args, uint32_t nargs) {
+  if (nargs != 1 || args[0]->type != Cons) {
+    return raise(Generic, "`length` takes a single list argument.");
+  }
+
+  int len = 0;
+  struct LispDatum* ptr = args[0];
+
+  while (is_occupied_node(ptr)) {
+    ++len;
+    ptr = ptr->cdr;
+  }
+
+  return new_integer(len);
+}
+
+struct LispDatum* cons(struct LispDatum** args, uint32_t nargs) {
+  if (nargs != 2) {
+    return raise(Generic, "`cons` takes exactly two arguments.");
+  }
+
+  return new_cons(args[0], args[1]);
+}
+
+struct LispDatum* list(struct LispDatum** args, uint32_t nargs) {
+  struct LispDatum* alist = malloc(sizeof(struct LispDatum));
+  alist->type = Cons;
+
+  if (nargs == 0) {
+    alist->car = alist->cdr = NULL;
+    return alist;
+  }
+
+  struct LispDatum* write_ptr = alist;
+  int initial_write = 1;
+
+  for (uint32_t i = 0; i < nargs; ++i) {
+    push(write_ptr, args[i]);
+    if (initial_write) {
+      initial_write = 0;
+    } else {
+      write_ptr = write_ptr->cdr;
+    }
+  }
+
+  return alist;
+}
+
+struct LispDatum* append(struct LispDatum** args, uint32_t nargs) {
+  struct LispDatum* combination = malloc(sizeof(struct LispDatum));
+
+  struct LispDatum* write_ptr = combination;
+
+  int initial_write = 1;
+
+  // Ensure type of all arguments.
+  for (uint32_t i = 0; i < nargs; ++i) {
+    if (args[i]->type != Cons) {
+      free(combination);
+      return raise(Generic, "Found non-list value in `append`.");
+    }
+  }
+
+  for (uint32_t i = 0; i < nargs; ++i) {
+    struct LispDatum* idx = args[i];
+
+    while (!is_occupied_node(idx)) {
+      if (initial_write) {
+        initial_write = 0;
+        write_ptr->car = idx->car;
+      } else {
+        push(write_ptr, idx->car);
+        write_ptr = write_ptr->cdr;
+      }
+    }
+  }
+
+  return combination;
+}
+
+struct LispDatum* reverse(struct LispDatum** args, uint32_t nargs) {
+  if (nargs != 1 || args[0]->type != Cons) {
+    return raise(Generic, "`reverse` takes a single list argument");
+  }
+
+  struct LispDatum* reversal = list(NULL, 0);
+  struct LispDatum* write_ptr = reversal;
+
+  int initial_write = 1;
+
+  struct LispDatum* idx = args[0];
+
+  while (is_occupied_node(idx)) {
+    push(write_ptr, idx->car);
+    idx = idx->car;
+
+    if (initial_write) {
+      initial_write = 0;
+    } else {
+      write_ptr = write_ptr->cdr;
+    }
+  }
+
+  return reversal;
 }
 
 struct LispDatum* eqv(struct LispDatum** args, uint32_t nargs) {
