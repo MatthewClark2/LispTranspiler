@@ -18,8 +18,8 @@ static int is_occupied_node(const struct LispDatum* d) {
  */
 static void push(struct LispDatum* node, struct LispDatum* value) {
   if (node == NULL || node->type != Cons || node->cdr != NULL) {
-    fprintf(stderr, "Fatal exeption occurred.");
-    exit(-1);
+    set_global_error_behavior(LogAndQuit);
+    raise(Generic, "Fatal programming error occurred causing illegal call to `push`.");
   }
 
   // Pushing to an empty node
@@ -210,7 +210,7 @@ struct LispDatum* subtract(struct LispDatum** args, uint32_t nargs) {
   struct LispDatum* init;
 
   if (nargs == 0) {
-    return raise(Generic, "Too few calls to subtract.");
+    return raise(Argument, "Too few calls to subtract.");
   } else if (nargs == 1) {
     // The argument needs to be negated, so it is essentially being subtracted from 0.
     init = new_integer(0);
@@ -320,7 +320,7 @@ struct LispDatum* divide(struct LispDatum** args, uint32_t nargs) {
 
 struct LispDatum* mod(struct LispDatum** args, uint32_t nargs) {
   if (nargs != 2) {
-    return raise(Generic, "Incorrect number of arguments passed to mod.");
+    return raise(Argument, "Incorrect number of arguments passed to mod.");
   }
 
   if (args[0]->type != Integer || args[1]->type != Integer) {
@@ -332,7 +332,7 @@ struct LispDatum* mod(struct LispDatum** args, uint32_t nargs) {
 
 struct LispDatum* division(struct LispDatum** args, uint32_t nargs) {
   if (nargs != 2) {
-    return raise(Generic, "Incorrect number of arguments passed to mod.");
+    return raise(Argument, "Incorrect number of arguments passed to mod.");
   }
 
   if (args[0]->type != Integer || args[1]->type != Integer) {
@@ -433,7 +433,7 @@ struct LispDatum* format(struct LispDatum** args, uint32_t nargs) {
 
 struct LispDatum* car(struct LispDatum** args, uint32_t nargs) {
   if (nargs != 1 || args[0]->type != Cons) {
-    return raise(Generic, "`car` takes a single list argument.");
+    return raise(Argument, "`car` takes a single list argument.");
   }
 
   return args[0]->car;
@@ -441,7 +441,7 @@ struct LispDatum* car(struct LispDatum** args, uint32_t nargs) {
 
 struct LispDatum* cdr(struct LispDatum** args, uint32_t nargs) {
   if (nargs != 1 && (args[0]->type != Nil && args[0]->type != Cons)) {
-    return raise(Generic, "`cdr` takes exactly one list argument.");
+    return raise(Argument, "`cdr` takes exactly one list argument.");
   }
 
   if (is_occupied_node(args[0])) {
@@ -453,7 +453,7 @@ struct LispDatum* cdr(struct LispDatum** args, uint32_t nargs) {
 
 struct LispDatum* length(struct LispDatum** args, uint32_t nargs) {
   if (nargs != 1 || args[0]->type != Cons) {
-    return raise(Generic, "`length` takes a single list argument.");
+    return raise(Argument, "`length` takes a single list argument.");
   }
 
   int len = 0;
@@ -469,7 +469,7 @@ struct LispDatum* length(struct LispDatum** args, uint32_t nargs) {
 
 struct LispDatum* cons(struct LispDatum** args, uint32_t nargs) {
   if (nargs != 2) {
-    return raise(Generic, "`cons` takes exactly two arguments.");
+    return raise(Argument, "`cons` takes exactly two arguments.");
   }
 
   return new_cons(args[0], args[1]);
@@ -510,7 +510,7 @@ struct LispDatum* append(struct LispDatum** args, uint32_t nargs) {
   for (uint32_t i = 0; i < nargs; ++i) {
     if (args[i]->type != Cons) {
       free(combination);
-      return raise(Generic, "Found non-list value in `append`.");
+      return raise(Type, "Expected list in argument to `append`.");
     }
   }
 
@@ -532,8 +532,8 @@ struct LispDatum* append(struct LispDatum** args, uint32_t nargs) {
 }
 
 struct LispDatum* reverse(struct LispDatum** args, uint32_t nargs) {
-  if (nargs != 1 || args[0]->type != Cons) {
-    return raise(Generic, "`reverse` takes a single list argument");
+  if ((nargs != 1) || args[0]->type != Cons) {
+    return raise(Argument, "`reverse` takes a single list argument");
   }
 
   struct LispDatum* reversal = list(NULL, 0);
