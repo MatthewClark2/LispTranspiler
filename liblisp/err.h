@@ -1,29 +1,39 @@
 #ifndef LISP_ERR_H
 #define LISP_ERR_H
 
-// TODO(matthew-c21): Add more descriptive causes.
 enum Cause {
-  ZeroDivision, Math, Generic
+  None = 0, Type, Argument, ZeroDivision, Math, Generic
 };
 
-// TODO(matthew-c21): Modify to return NULL. Possibly use it to trigger some global error state that needs to be primed
-//  in generated code in order to quit the program.
-/*
- * i.e.
- *
- * void* raise(cause, msg) { trip_error(cause, msg); return NULL: }
- *
- * void trip_error(cause, msg) { (* details omitted *) if (primed) exit(-1); }
- *
- */
+enum ErrorBehavior {
+  /**
+   * Primarily used for debugging purposes. Behavior of the program when encountering an error in this state is
+   * undefined.
+   */
+  LogOnly,
 
+  /**
+   * Standard behavior that logs an error to `stderr` and quits.
+   */
+  LogAndQuit
+};
 
 /**
- * Basic means of expounding on runtime errors. Prints cause and message to stderr, then exits program. While no value
- * is actually returned from this function, it ostensibly returns a void pointer so it can be used as `return raise()`.
+ * Error state value. This value should be treated as readonly by client code.
+ */
+enum Cause GlobalErrorState;
+
+/**
+ * Basic means of expounding on runtime errors. Prints cause and message to stderr. The behavior after this point is
+ * based on what the currently set error behavior is. Use `return raise(...)` in the same place you would use `raise E`.
+ * The behavior is quite a bit different, but it establishes the same point. This function can also double as a logging
+ * tool if no cause is given.
+ * @param cause the reason for the raise. If `None`, no exit will occur, but details will still be printed to `stderr`.
  * @param msg extra details to be printed. If NULL, only the cause will be printed.
- * @return nothing, as the program exits.
+ * @return NULL if the global error behavior is set to log only. This method does not return otherwise.
  */
 void* raise(enum Cause cause, const char* msg);
+
+void set_global_error_behavior(enum ErrorBehavior behavior);
 
 #endif //LISP_ERR_H
