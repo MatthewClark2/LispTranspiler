@@ -659,3 +659,31 @@ void Test_multiplication(CuTest* tc) {
 
   CuAssert(tc, "3 * 1/2 * -3.5 * -4.25+6.125i = ", eqv(multiply(args, 4), new_complex(22.3125, -32.15625)));
 }
+
+void Test_empty_list(CuTest* tc) {
+  struct LispDatum* empty_list = list(NULL, 0);
+  CuAssert(tc, "(list) != nil", !eqv(get_nil(), empty_list));
+  CuAssertPtrEquals(tc, NULL, empty_list->car);
+  CuAssertPtrEquals(tc, NULL, empty_list->cdr);
+}
+
+void Test_single_element_list(CuTest* tc) {
+  struct LispDatum* args[2];
+  args[0] = get_nil();
+  args[1] = get_nil();
+  struct LispDatum* mono_list = list(args, 1);
+  CuAssertPtrEquals(tc, get_nil(), mono_list->car);
+  CuAssertPtrEquals(tc, NULL, mono_list->cdr);
+
+  struct LispDatum* duo_list = list(args, 2);
+  CuAssertPtrEquals(tc, get_nil(), duo_list->car);
+  CuAssertPtrEquals(tc, get_nil(), duo_list->cdr->car);
+  CuAssertPtrEquals(tc, NULL, duo_list->cdr->cdr);
+}
+
+void Test_nil_cadr(CuTest* tc) {
+  struct LispDatum* nil = get_nil();
+
+  CuAssert(tc, "(cdr nil) == ()", eqv(cdr(&nil, 1), list(NULL, 0)));
+  // TODO(matthew-c21) Find a way to test for exceptions that circumvents the natural method of just closing the program
+}
