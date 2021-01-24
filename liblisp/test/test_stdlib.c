@@ -1,7 +1,18 @@
 #include <stddef.h>
 
+#include "../err.h"
 #include "CuTest.h"
 #include "../data.h"
+
+#define AssertThrows(expression, err) CuAssertPtrEquals(tc, NULL, (expression)); \
+CuAssertTrue(tc, GlobalErrorState == (err)); \
+raise(None, NULL);
+
+static void assert_empty_list(CuTest* tc, const char* msg, struct LispDatum* alist) {
+  CuAssert(tc, "Value is a list", alist->type == Cons);
+  CuAssert(tc, msg, alist->car == NULL && alist->cdr == NULL);
+
+}
 
 // PREDICATES
 void Test_int_equality(CuTest* tc) {
@@ -143,8 +154,8 @@ void Test_rational_equality(CuTest* tc) {
   discard_datum(a);
   discard_datum(b);
 
-  a = new_rational(1,2);
-  b = new_rational(1,2);
+  a = new_rational(1, 2);
+  b = new_rational(1, 2);
 
   CuAssert(tc, "1/2 = 1/2", eqv(a, b));
 
@@ -684,6 +695,266 @@ void Test_single_element_list(CuTest* tc) {
 void Test_nil_cadr(CuTest* tc) {
   struct LispDatum* nil = get_nil();
 
-  CuAssert(tc, "(cdr nil) == ()", eqv(cdr(&nil, 1), list(NULL, 0)));
-  // TODO(matthew-c21) Find a way to test for exceptions that circumvents the natural method of just closing the program
+  assert_empty_list(tc, "(cdr nil) == ()", cdr(&nil, 1));
+
+  struct LispDatum* null_result = car(&nil, 1);
+  CuAssert(tc, "(car nil) fails", null_result == NULL);
+  CuAssert(tc, "Error state raised", GlobalErrorState);
+
+  raise(None, "Error state reset.");
+}
+
+void Test_car(CuTest* tc) {
+  struct LispDatum* args[3];
+
+  for (int i = 0; i < 3; ++i) {
+    args[i] = new_integer(i + 1);
+  }
+
+  struct LispDatum* alist = list(args, 3);
+
+  // Neither `list` nor `car` should produce a copy of it's elements, so this is a stronger condition than `eqv`.
+  CuAssert(tc, "(car '(1 2 3)) = 1", car(&alist, 1) == args[1]);
+}
+
+void Test_cdr(CuTest* tc) {
+  struct LispDatum* args[3];
+
+  for (int i = 0; i < 3; ++i) {
+    args[i] = new_integer(i + 1);
+  }
+
+  struct LispDatum* alist = list(args, 3);
+
+  struct LispDatum* output = cdr(&alist, 1);
+
+  CuAssert(tc, "result is a list", output->type == Cons);
+  CuAssert(tc, "(car (cdr '(1 2 3)) == 2", output->car == args[1]);
+  CuAssert(tc, "(car (cdr (cdr '(1 2 3))) == 3", output->cdr->car == args[2]);
+  CuAssert(tc, "(cdr (cdr (cdr '(1 2 3))) == NULL", output->cdr->cdr == NULL);
+}
+
+void Test_cadr_errors(CuTest* tc) {
+  // Fail without enough arguments.
+  CuAssertPtrEquals(tc, NULL, car(NULL, 0));
+  CuAssert(tc, "Too few arguments to `car` fail", GlobalErrorState == Argument);
+
+  raise(None, NULL);
+
+  CuAssertPtrEquals(tc, NULL, cdr(NULL, 0));
+  CuAssert(tc, "Too few arguments to `cdr` fail", GlobalErrorState == Argument);
+
+  raise(None, NULL);
+
+  // Fail with too many arguments. NULL is used because the arguments shouldn't even be accessed.
+  CuAssertPtrEquals(tc, NULL, car(NULL, 0));
+  CuAssert(tc, "Too few arguments to `car` fail", GlobalErrorState == Argument);
+
+  raise(None, NULL);
+
+  CuAssertPtrEquals(tc, NULL, cdr(NULL, 2));
+  CuAssert(tc, "Too many arguments to `cdr` fail", GlobalErrorState == Argument);
+
+  raise(None, NULL);
+
+  // Fail with non-list arguments.
+  struct LispDatum* bad_arg = new_string("fubar");
+
+  CuAssertPtrEquals(tc, NULL, car(&bad_arg, 1));
+  CuAssert(tc, "`car` fails with non-list arg", GlobalErrorState == Type);
+
+  raise(None, NULL);
+
+  CuAssertPtrEquals(tc, NULL, cdr(&bad_arg, 1));
+  CuAssert(tc, "`cdr` fails with non-list arg", GlobalErrorState == Type);
+
+  raise(None, NULL);
+}
+
+void Test_length(CuTest* tc) {
+  struct LispDatum* nil = get_nil();
+  // Nil
+  CuAssert(tc, "(len nil) == 0", eqv(new_integer(0), length(&nil, 1)));
+
+  // Empty List
+  struct LispDatum* empty_list = list(NULL, 0);
+  CuAssert(tc, "(len ()) == 0", eqv(new_integer(0), length(&empty_list, 1)));
+
+  // Standard list
+  struct LispDatum* args[2];
+  args[0] = new_integer(1);
+  args[1] = new_integer(2);
+
+  struct LispDatum* alist = list(args, 2);
+
+  CuAssert(tc, "(len '(1 2)) == 2", eqv(new_integer(2), length(&alist, 1)));
+}
+
+void Test_length_errors(CuTest* tc) {
+  // Not enough args
+  AssertThrows(length(NULL, 0), Argument);
+
+  // Too many args
+  AssertThrows(length(NULL, 2), Argument);
+
+  // Non-list value.
+  struct LispDatum* arg = new_integer(0);
+  AssertThrows(length(&arg, 1), Type);
+
+  // Pair
+  struct LispDatum* args[2];
+  args[0] = new_integer(1);
+  args[1] = new_integer(2);
+
+  struct LispDatum* pair = cons(args, 2);
+  AssertThrows(length(&pair, 1), Type);
+}
+
+void Test_append(CuTest* tc) {
+  struct LispDatum* digits[10];
+
+  for (int i = 0; i < 10; ++i) {
+    digits[i] = new_integer(i);
+  }
+
+  // 0-3
+  struct LispDatum* list1 = list(digits, 4);
+
+  // 4-6
+  struct LispDatum* list2 = list(digits + 5, 3);
+
+  // 7-9
+  struct LispDatum* list3 = list(digits + 7, 3);
+
+  struct LispDatum* args[4];
+  args[0] = list1;
+  args[1] = list2;
+  args[2] = list3;
+
+  struct LispDatum* result = append(args, 3);
+
+  CuAssertTrue(tc, result->type == Cons);
+
+  struct LispDatum* idx = result;
+
+  for (int i = 0; i < 10; ++i) {
+    CuAssertTrue(tc, idx->car == digits[i]);
+    idx = idx->cdr;
+  }
+
+  // nil argument.
+  CuAssertPtrEquals(tc, NULL, idx);
+
+  result = append(args, 4);
+  args[3] = args[2];
+  args[2] = get_nil();
+
+  CuAssertTrue(tc, result->type == Cons);
+
+  idx = result;
+
+  for (int i = 0; i < 10; ++i) {
+    CuAssertTrue(tc, idx->car == digits[i]);
+    idx = idx->cdr;
+  }
+
+  CuAssertPtrEquals(tc, NULL, idx);
+
+  // No arguments - empty list.
+  result = append(NULL, 0);
+  CuAssertPtrEquals(tc, NULL, result->car);
+  CuAssertPtrEquals(tc, NULL, result->cdr);
+
+  // One argument - returned as is without creating new list.
+  result = append(&list1, 1);
+  CuAssertTrue(tc, result == list1);
+}
+
+void Test_append_errors(CuTest* tc) {
+  struct LispDatum* args[3];
+  args[0] = new_integer(0);
+  args[1] = list(NULL, 0);
+
+  AssertThrows(append(args, 1), Type);
+
+  // Swap and add nil.
+  args[2] = args[0];
+  args[0] = args[1];
+  args[1] = args[2];
+  args[2] = get_nil();
+
+  AssertThrows(append(args, 3), Type);
+}
+
+void Test_cons(CuTest* tc) {
+  struct LispDatum* args[2];
+  args[0] = new_integer(1);
+  args[1] = new_string("asdf");
+
+  struct LispDatum* pair = cons(args, 2);
+
+  CuAssertTrue(tc, pair->type == Cons);
+  CuAssertTrue(tc, pair->car == args[0]);
+  CuAssertTrue(tc, pair->cdr == args[1]);
+}
+
+void Test_cons_errors(CuTest* tc) {
+  // Too few
+  AssertThrows(cons(NULL, 0), Argument);
+  AssertThrows(cons(NULL, 1), Argument);
+
+  // Too many
+  AssertThrows(cons(NULL, 3), Argument);
+}
+
+void Test_reverse(CuTest* tc) {
+  // Nil
+  struct LispDatum* nil = get_nil();
+  CuAssertPtrEquals(tc, get_nil(), reverse(&nil, 1));
+
+  // Empty
+  struct LispDatum* empty = list(NULL, 0);
+  CuAssertPtrEquals(tc, empty, reverse(&empty, 1));
+
+  // Single Element
+  struct LispDatum* monolith = list(&nil, 1);
+  CuAssertPtrEquals(tc, monolith, reverse(&monolith, 1));
+
+  // Default
+  struct LispDatum* items[4];
+  for (int i = 0; i < 4; ++i) {
+    items[i] = new_integer(i);
+  }
+
+  struct LispDatum* reversed = reverse(items, 4);
+  CuAssertTrue(tc, reversed->type == Cons);
+
+  struct LispDatum* idx = reversed;
+
+  for (int i = 3; i >= 0; --i) {
+    CuAssertPtrEquals(tc, items[i], idx->car);
+    idx = idx->cdr;
+  }
+
+  CuAssertTrue(tc, idx == NULL);
+}
+
+void Test_reverse_errors(CuTest* tc) {
+  // Too few
+  AssertThrows(reverse(NULL, 0), Argument);
+
+  // Too many
+  AssertThrows(reverse(NULL, 2), Argument);
+
+  // Wrong type
+  struct LispDatum* bad_arg = new_string("fubar");
+  AssertThrows(reverse(&bad_arg, 1), Type)
+
+  // Pair
+  struct LispDatum* pair_args[2];
+  pair_args[0] = bad_arg;
+  pair_args[1] = get_nil();
+
+  struct LispDatum* bad_pair = cons(pair_args, 2);
+  AssertThrows(reverse(&bad_pair, 1), Type);
 }
