@@ -3,12 +3,14 @@
 
 #include "err.h"
 
+// TODO(matthew-c21): Unit testing.
 /**
  * Error state value. This value should be treated as readonly by client code. Should multi-threaded behavior ever
  * become a thing, this will need to be more complex.
  */
-static enum Cause GlobalErrorState = None;
+enum Cause GlobalErrorState = None;
 
+// This is left static because it shouldn't ever need to be read externally.
 static enum ErrorBehavior GlobalErrorBehavior = LogOnly;
 
 static void destroy_and_exit() {
@@ -18,6 +20,8 @@ static void destroy_and_exit() {
 
 static char* cause_string(enum Cause cause) {
   switch (cause) {
+    case None:
+      return "Info";
     case ZeroDivision:
       return "Division by Zero";
     case Math:
@@ -49,4 +53,8 @@ void* raise(enum Cause cause, const char* msg) {
   }
 
   return NULL;
+}
+
+void set_global_error_behavior(enum ErrorBehavior behavior) {
+  GlobalErrorBehavior = behavior;
 }

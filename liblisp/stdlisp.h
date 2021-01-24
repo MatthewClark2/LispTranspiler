@@ -99,8 +99,9 @@ struct LispDatum* car(struct LispDatum** args, uint32_t nargs);
 struct LispDatum* cdr(struct LispDatum** args, uint32_t nargs);
 
 /**
- * Obtains the length of a(n) (im)proper list. Fails on non-list arguments, or when receiving too many arguments at
- * once.
+ * Obtains the length of a proper list. Fails on non-list arguments, or when receiving too many arguments at once.
+ * @throws Type error if given non-proper list arguments.
+ * @throws Argument error if not given exactly one argument
  */
 struct LispDatum* length(struct LispDatum** args, uint32_t nargs);
 struct LispDatum* cons(struct LispDatum** args, uint32_t nargs);
@@ -113,7 +114,9 @@ struct LispDatum* cons(struct LispDatum** args, uint32_t nargs);
 struct LispDatum* list(struct LispDatum** args, uint32_t nargs);
 
 /**
- * Combines multiple lists together. Only joins top level lists.
+ * Combines multiple lists together. Only joins top level lists. Returns an empty list if no lists are provided. Returns
+ * the given list if only one list is provided. This has an interesting quirk that `(append nil)` returns nil instead of
+ * an empty list. It will fail if given a single argument of any other type, however.
  *
  * Example: (append (1 2) (3 4)) ==> (1 2 3 4)
  */
@@ -121,7 +124,10 @@ struct LispDatum* append(struct LispDatum** args, uint32_t nargs);
 
 /**
  * Constructs a list in reverse order. This items referred to in the new reversed list are the same as in the
- * non-reversed list.
+ * non-reversed list. For a list too short to reverse (nil, empty, single element), the original argument is returned.
+ *
+ * @throws Argument exception if anything other than one argument is passed.
+ * @throws Type exception if the argument is neither a proper list nor nil.
  */
 struct LispDatum* reverse(struct LispDatum** args, uint32_t nargs);
 
