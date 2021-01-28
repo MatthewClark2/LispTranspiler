@@ -55,7 +55,7 @@ struct LispDatum* division(struct LispDatum** args, uint32_t nargs);
 
 struct LispDatum* format(struct LispDatum** args, uint32_t nargs);
 
-void display(const struct LispDatum* datum);
+void display(struct LispDatum* datum);
 
 /**
  * Determines if two objects are strictly equal.

@@ -819,6 +819,7 @@ void Test_length_errors(CuTest* tc) {
 }
 
 void Test_append(CuTest* tc) {
+  // Boilerplate for rest of calls.
   struct LispDatum* digits[10];
 
   for (int i = 0; i < 10; ++i) {
@@ -829,7 +830,7 @@ void Test_append(CuTest* tc) {
   struct LispDatum* list1 = list(digits, 4);
 
   // 4-6
-  struct LispDatum* list2 = list(digits + 5, 3);
+  struct LispDatum* list2 = list(digits + 4, 3);
 
   // 7-9
   struct LispDatum* list3 = list(digits + 7, 3);
@@ -839,34 +840,39 @@ void Test_append(CuTest* tc) {
   args[1] = list2;
   args[2] = list3;
 
-  struct LispDatum* result = append(args, 3);
+  // No arguments - empty list.
+  struct LispDatum* result = append(NULL, 0);
+  CuAssertTrue(tc, result->type == Cons);
+  CuAssertPtrEquals(tc, NULL, result->car);
+  CuAssertPtrEquals(tc, NULL, result->cdr);
+
+  // One nil argument returns nil.
+  struct LispDatum* nil = get_nil();
+  result = append(&nil, 1);
+  CuAssertPtrEquals(tc, get_nil(), result);
+
+  // One argument - returned as is without creating new list.
+  result = append(&list1, 1);
+  CuAssertTrue(tc, result == list1);
+
+  // Generic case.
+  result = append(args, 3);
 
   CuAssertTrue(tc, result->type == Cons);
 
   struct LispDatum* idx = result;
-  struct LispDatum* read_ptr = args[0];
 
-  int list_index = 0;
-
-  while (list_index < 3) {
-    CuAssertPtrEquals(tc, idx->car, read_ptr->car);
+  for (int i = 0; i < 10; ++i) {
+    CuAssertTrue(tc, idx->car == digits[i]);
     idx = idx->cdr;
-    read_ptr = read_ptr->cdr;
-
-    if (read_ptr == NULL) {
-      list_index++;
-      read_ptr = args[list_index];
-    }
   }
 
   CuAssertPtrEquals(tc, args[3], idx);
 
-  // nil argument.
-  CuAssertPtrEquals(tc, NULL, idx);
-
-  result = append(args, 4);
+  // Nil in middle of list.
   args[3] = args[2];
   args[2] = get_nil();
+  result = append(args, 4);
 
   CuAssertTrue(tc, result->type == Cons);
 
@@ -878,15 +884,6 @@ void Test_append(CuTest* tc) {
   }
 
   CuAssertPtrEquals(tc, NULL, idx);
-
-  // No arguments - empty list.
-  result = append(NULL, 0);
-  CuAssertPtrEquals(tc, NULL, result->car);
-  CuAssertPtrEquals(tc, NULL, result->cdr);
-
-  // One argument - returned as is without creating new list.
-  result = append(&list1, 1);
-  CuAssertTrue(tc, result == list1);
 }
 
 void Test_append_errors(CuTest* tc) {
