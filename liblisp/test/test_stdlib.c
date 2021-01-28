@@ -15,6 +15,7 @@ static void assert_empty_list(CuTest* tc, const char* msg, struct LispDatum* ali
 }
 
 // PREDICATES
+// TODO(matthew-c21): List and string equality testing
 void Test_int_equality(CuTest* tc) {
   struct LispDatum* a = new_integer(32);
   struct LispDatum* b = new_integer(32);
@@ -827,7 +828,8 @@ void Test_car(CuTest* tc) {
   struct LispDatum* alist = list(args, 3);
 
   // Neither `list` nor `car` should produce a copy of it's elements, so this is a stronger condition than `eqv`.
-  CuAssert(tc, "(car '(1 2 3)) = 1", car(&alist, 1) == args[1]);
+  struct LispDatum* result = car(&alist, 1);
+  CuAssert(tc, "(car '(1 2 3)) = 1", result == args[0]);
 }
 
 void Test_cdr(CuTest* tc) {
@@ -887,11 +889,15 @@ void Test_cadr_errors(CuTest* tc) {
 void Test_length(CuTest* tc) {
   struct LispDatum* nil = get_nil();
   // Nil
-  CuAssert(tc, "(len nil) == 0", eqv(new_integer(0), length(&nil, 1)));
+  struct LispDatum* l = length(&nil, 1);
+  CuAssert(tc, "(len nil) == 0", l->type == Integer);
+  CuAssert(tc, "(len nil) == 0", l->int_val == 0);
 
   // Empty List
   struct LispDatum* empty_list = list(NULL, 0);
-  CuAssert(tc, "(len ()) == 0", eqv(new_integer(0), length(&empty_list, 1)));
+  l = length(&empty_list, 1);
+  CuAssertTrue(tc, l->type == Integer);
+  CuAssertTrue(tc, l->int_val == 0);
 
   // Standard list
   struct LispDatum* args[2];
@@ -900,7 +906,9 @@ void Test_length(CuTest* tc) {
 
   struct LispDatum* alist = list(args, 2);
 
-  CuAssert(tc, "(len '(1 2)) == 2", eqv(new_integer(2), length(&alist, 1)));
+  l = length(&alist, 1);
+  CuAssertTrue(tc,l->type == Integer);
+  CuAssertTrue(tc, l->int_val == 2);
 }
 
 void Test_length_errors(CuTest* tc) {
@@ -949,11 +957,22 @@ void Test_append(CuTest* tc) {
   CuAssertTrue(tc, result->type == Cons);
 
   struct LispDatum* idx = result;
+  struct LispDatum* read_ptr = args[0];
 
-  for (int i = 0; i < 10; ++i) {
-    CuAssertTrue(tc, idx->car == digits[i]);
+  int list_index = 0;
+
+  while (list_index < 3) {
+    CuAssertPtrEquals(tc, idx->car, read_ptr->car);
     idx = idx->cdr;
+    read_ptr = read_ptr->cdr;
+
+    if (read_ptr == NULL) {
+      list_index++;
+      read_ptr = args[list_index];
+    }
   }
+
+  CuAssertPtrEquals(tc, args[3], idx);
 
   // nil argument.
   CuAssertPtrEquals(tc, NULL, idx);
@@ -1039,13 +1058,15 @@ void Test_reverse(CuTest* tc) {
     items[i] = new_integer(i);
   }
 
-  struct LispDatum* reversed = reverse(items, 4);
+  struct LispDatum* item_list = list(items, 4);
+
+  struct LispDatum* reversed = reverse(&item_list, 1);
   CuAssertTrue(tc, reversed->type == Cons);
 
   struct LispDatum* idx = reversed;
 
-  for (int i = 3; i >= 0; --i) {
-    CuAssertPtrEquals(tc, items[i], idx->car);
+  for (int i = 0; i < 4; ++i) {
+    CuAssertPtrEquals(tc, items[3-i], idx->car);
     idx = idx->cdr;
   }
 

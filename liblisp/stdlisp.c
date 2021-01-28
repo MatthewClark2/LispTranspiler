@@ -449,16 +449,20 @@ struct LispDatum* format(struct LispDatum** args, uint32_t nargs) {
 //  one part of execution to another, there's no good way eliminate this redundancy.
 
 struct LispDatum* car(struct LispDatum** args, uint32_t nargs) {
-  if (nargs != 1 || args[0]->type != Cons) {
-    return raise(Argument, "`car` takes a single list argument.");
+  if (nargs != 1) {
+    return raise(Argument, "`car` takes a single argument.");
+  } else if (args[0]->type != Cons) {
+    return raise(Type, "`car` expected proper list argument");
   }
 
   return args[0]->car;
 }
 
 struct LispDatum* cdr(struct LispDatum** args, uint32_t nargs) {
-  if (nargs != 1 && (args[0]->type != Nil && args[0]->type != Cons)) {
-    return raise(Argument, "`cdr` takes exactly one list argument.");
+  if (nargs != 1) {
+    return raise(Argument, "`cdr` expects exactly one argument");
+  } else if (args[0]->type != Nil && args[0]->type != Cons) {
+    return raise(Type, "`cdr` expected a list valued argument.");
   }
 
   if (is_occupied_node(args[0])) {
@@ -469,8 +473,12 @@ struct LispDatum* cdr(struct LispDatum** args, uint32_t nargs) {
 }
 
 struct LispDatum* length(struct LispDatum** args, uint32_t nargs) {
-  if (nargs != 1 || args[0]->type != Cons) {
-    return raise(Argument, "`length` takes a single list argument.");
+  if (nargs != 1) {
+    return raise(Argument, "`length` takes a single argument.");
+  } else if (args[0]->type == Nil) {
+    return new_integer(0);
+  } else if (args[0]->type != Cons) {
+    return raise(Type, "`length` expected list argument");
   }
 
   int len = 0;
@@ -479,6 +487,11 @@ struct LispDatum* length(struct LispDatum** args, uint32_t nargs) {
   while (is_occupied_node(ptr)) {
     ++len;
     ptr = ptr->cdr;
+  }
+
+  // The 0 length check helps account for empty lists that never get assigned to their cdr.
+  if (len != 0 && ptr != NULL) {
+    return raise(Type, "`length` expected list argument. Received pair.");
   }
 
   return new_integer(len);
@@ -517,58 +530,88 @@ struct LispDatum* list(struct LispDatum** args, uint32_t nargs) {
 }
 
 struct LispDatum* append(struct LispDatum** args, uint32_t nargs) {
+  // Ensure type of all arguments.
+  for (uint32_t i = 0; i < nargs; ++i) {
+    if (args[i]->type != Cons && args[i]->type != Nil) {
+      return raise(Type, "Expected list in argument to `append`.");
+    }
+  }
+
+  // Special cases for small argument numbers.
+  if (nargs == 0) {
+    return list(NULL, 0);
+  } else if (nargs == 1) {
+    return args[0];
+  }
+
   struct LispDatum* combination = malloc(sizeof(struct LispDatum));
+  combination->type = Cons;
 
   struct LispDatum* write_ptr = combination;
 
   int initial_write = 1;
 
-  // Ensure type of all arguments.
-  for (uint32_t i = 0; i < nargs; ++i) {
-    if (args[i]->type != Cons) {
-      free(combination);
-      return raise(Type, "Expected list in argument to `append`.");
-    }
-  }
-
-  for (uint32_t i = 0; i < nargs; ++i) {
+  for (uint32_t i = 0; i < nargs - 1; ++i) {
     struct LispDatum* idx = args[i];
 
-    while (!is_occupied_node(idx)) {
-      if (initial_write) {
-        initial_write = 0;
+    if (idx->type == Nil) {
+      continue;
+    }
+
+    // check type of each idx. If any pairs appear, toss them. If a Nil appears, it should be skipped.
+    while (is_occupied_node(idx)) {
+      if (initial_write--) {
         write_ptr->car = idx->car;
       } else {
         push(write_ptr, idx->car);
         write_ptr = write_ptr->cdr;
       }
+
+      idx = idx->cdr;
+    }
+
+    if (idx != NULL) {
+      return raise(Type, "Non-terminal arguments to `append` should be proper lists");
     }
   }
 
+  // If it's an occupied list (proper or otherwise), push it at the end. It must otherwise be empty or nil.
+  if (is_occupied_node(args[nargs - 1])) {
+    write_ptr->cdr = args[nargs-1];
+  }
+
+  // Otherwise it's nil and nothing needs to be done.
   return combination;
 }
 
 struct LispDatum* reverse(struct LispDatum** args, uint32_t nargs) {
-  if ((nargs != 1) || args[0]->type != Cons) {
-    return raise(Argument, "`reverse` takes a single list argument");
+  if (nargs != 1) {
+    return raise(Argument, "`reverse` takes exactly one argument");
+  } else if (args[0]->type == Nil) {
+    return args[0];
+  } else if (args[0]->type != Cons) {
+    return raise(Type, "`reverse` expected list argument");
   }
 
-  struct LispDatum* reversal = list(NULL, 0);
-  struct LispDatum* write_ptr = reversal;
+  // Handle case of empty and singleton list.
+  if (args[0]->car == NULL || args[0]->cdr == NULL) {
+    return args[0];
+  }
 
-  int initial_write = 1;
-
+  struct LispDatum* reversal = NULL;
   struct LispDatum* idx = args[0];
 
   while (is_occupied_node(idx)) {
-    push(write_ptr, idx->car);
-    idx = idx->car;
+    reversal = new_cons(idx->car, reversal);
+    idx = idx->cdr;
+  }
 
-    if (initial_write) {
-      initial_write = 0;
-    } else {
-      write_ptr = write_ptr->cdr;
-    }
+  if (idx != NULL) {
+    return raise(Type, "`reverse` expects a proper list");
+  }
+
+  if (reversal == NULL) {
+    return list(NULL, 0);
   }
 
   return reversal;
