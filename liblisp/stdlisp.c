@@ -348,7 +348,9 @@ struct LispDatum* division(struct LispDatum** args, uint32_t nargs) {
   return new_cons(r, new_cons(d, get_nil()));
 }
 
-void display(const struct LispDatum* datum) {
+void display(struct LispDatum* datum) {
+  struct LispDatum* read_ptr = datum;
+
   switch (datum->type) {
     case Integer:
       printf("%d", datum->int_val);
@@ -366,12 +368,20 @@ void display(const struct LispDatum* datum) {
       printf("%s", datum->label);
       break;
     case Cons:
+      // TODO(matthew-c21): Handle case of final element not getting extra space.
       printf("(");
-      display(datum->car);
-      printf(" ");
+      while (is_occupied_node(read_ptr)) {
+        display(read_ptr->car);
+        printf(" ");
+        read_ptr = read_ptr->cdr;
+      }
 
-      // TODO(matthew-c21): Check for nil at the end of the list.
-      display(datum->cdr);
+      if (read_ptr != NULL) {
+        printf(". ");
+        display(read_ptr);
+      }
+
+      printf(")");
       break;
     case Nil:
       printf("nil");
@@ -560,10 +570,11 @@ struct LispDatum* append(struct LispDatum** args, uint32_t nargs) {
 
     // check type of each idx. If any pairs appear, toss them. If a Nil appears, it should be skipped.
     while (is_occupied_node(idx)) {
-      if (initial_write--) {
-        write_ptr->car = idx->car;
+      push(write_ptr, idx->car);
+
+      if (initial_write) {
+        initial_write = 0;
       } else {
-        push(write_ptr, idx->car);
         write_ptr = write_ptr->cdr;
       }
 
