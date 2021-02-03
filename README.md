@@ -26,3 +26,6 @@ If the script fails at any point, it leaves the `tmp/` directory.
 
 Recursively iterate through each statement, pulling out definitions and values. Perform all necessary definitions first, then assign values at the end.
 
+There is a bug that prevents redefinition of variables. Therefore, there needs to be a set of known user variables so that 
+their values can be reused.
+

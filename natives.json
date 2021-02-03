@@ -15,7 +15,14 @@
     ">=": "greater_than_eql",
     "and": "logical_and",
     "or": "logical_or",
-    "not": "logical_not"
+    "not": "logical_not",
+    "list": "list",
+    "car": "car",
+    "cdr": "cdr",
+    "length": "length",
+    "cons": "cons",
+    "append": "append",
+    "reverse": "reverse"
   },
   "variables": {
   }
