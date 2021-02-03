@@ -787,7 +787,7 @@ void Test_variable_eqv(CuTest* tc) {
 
 void Test_empty_list(CuTest* tc) {
   struct LispDatum* empty_list = list(NULL, 0);
-  CuAssert(tc, "(list) != nil", !eqv(get_nil(), empty_list));
+  CuAssert(tc, "(list) != nil", !datum_cmp(get_nil(), empty_list));
   CuAssertPtrEquals(tc, NULL, empty_list->car);
   CuAssertPtrEquals(tc, NULL, empty_list->cdr);
 }
