@@ -1,0 +1,22 @@
+{
+  "functions": {
+    "+": "add",
+    "-": "subtract",
+    "/": "divide",
+    "*": "multiply",
+    "div": "division",
+    "format": "format",
+    "mod": "mod",
+    "eqv": "eqv",
+    "<": "less_than",
+    ">": "greater_than",
+    "=": "num_equal",
+    "<=": "less_than_eql",
+    ">=": "greater_than_eql",
+    "and": "logical_and",
+    "or": "logical_or",
+    "not": "logical_not"
+  },
+  "variables": {
+  }
+}

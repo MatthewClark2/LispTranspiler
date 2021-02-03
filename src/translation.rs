@@ -1,8 +1,10 @@
 use crate::data::LispDatum;
-use crate::ast::ASTNode::{Literal, Definition, Call};
+use crate::ast::ASTNode::{Literal, Definition, Call, Condition};
 use crate::ast::{ASTNode, ASTVisitor};
 use std::collections::HashMap;
 use crate::data::LispDatum::Symbol;
+use json::{JsonValue, Error};
+use std::fs;
 
 #[derive(Copy, Clone)]
 struct Gensym {
@@ -36,10 +38,10 @@ impl TranslationUnit {
     pub fn from(statements: Vec<ASTNode>) -> Result<TranslationUnit, String> {
         let mut me = TranslationUnit { statements, _gensym: Gensym::new(0) };
 
-
         // TODO(matthew-c21): Do all the name mangling at once, rather than doing just defs first
-        me.apply(Box::new(UserDefinition::new()))?;
-        me.apply(Box::new(Mangler::new(Gensym::new(0))))?;
+        me.apply_mono(Box::new(UserDefinition::new()))?;
+        me.apply_mono(Box::new(ConditionalExpansion::new()))?;
+        me.apply_mono(Box::new(Mangler::new(Gensym::new(512))))?;
         me.apply(Box::new(CallExpansion::new(Gensym::new(1024))))?;
 
         Ok(me)
@@ -57,10 +59,28 @@ impl TranslationUnit {
         Ok(())
     }
 
+    fn apply_mono(&mut self, mut visitor: Box<dyn ASTVisitor<ASTNode>>) -> Result<(), String> {
+        let mut statements: Vec<ASTNode> = Vec::new();
+
+        for statement in &self.statements {
+            statements.push(statement.accept(visitor.as_mut())?);
+        }
+
+        self.statements = statements;
+
+        Ok(())
+    }
+
     pub fn translate(&self) -> Result<String, String> {
         let mut output = String::from(preamble());
 
-        let mut translation_visitor = TranspilationVisitor::new(self._gensym.index);
+        let contents = fs::read_to_string("natives.json").expect("Unable to load natives.json");
+        let natives = match json::parse(contents.as_str()) {
+            Ok(v) => v,
+            Err(msg) => return Err(msg.to_string()),
+        };
+
+        let mut translation_visitor = TranspilationVisitor::new(natives, self._gensym.index);
 
         for statement in &self.statements {
             let x: Result<String, String> = statement.accept(&mut translation_visitor);
@@ -133,6 +153,10 @@ impl ASTVisitor<Vec<ASTNode>> for CallExpansion {
     fn visit_definition(&mut self, name: &String, value: &ASTNode) -> Result<Vec<ASTNode>, String> {
         Ok(vec![Definition(name.clone(), Box::new(value.clone()))])
     }
+
+    fn visit_condition(&mut self, cond: &ASTNode, if_true: &ASTNode, if_false: &ASTNode) -> Result<Vec<ASTNode>, String> {
+        Ok(vec!(Condition(Box::new(cond.clone()), Box::new(if_true.clone()), Box::new(if_false.clone()))))
+    }
 }
 
 // TODO(matthew-c21): For now, everything is run straight from the main function. Later on, I'll
@@ -148,6 +172,8 @@ fn postamble() -> &'static str {
 
 fn default_generators(d: &LispDatum) -> String {
     String::from(match d {
+        LispDatum::Bool(true) => "get_true",
+        LispDatum::Bool(false) => "get_false",
         LispDatum::Complex(_, _) => "new_complex",
         LispDatum::Real(_) => "new_real",
         LispDatum::Rational(_, _) => "new_rational",
@@ -158,26 +184,18 @@ fn default_generators(d: &LispDatum) -> String {
     })
 }
 
-// TODO(matthew-c21): Add reference to translation unit.
+// TODO(matthew-c21): Modify struct to return Vec<String> instead of just String, where the last
+//  element in the vector is the value of the node (i.e. defs first, values second).
 struct TranspilationVisitor {
-    functions: HashMap<String, String>,
+    natives: JsonValue,
     generators: &'static dyn Fn(&LispDatum) -> String,
     gensym: Gensym,
 }
 
 impl TranspilationVisitor {
-    pub fn new(index: u64) -> Self {
+    pub fn new(natives: JsonValue, index: u64) -> Self {
         TranspilationVisitor {
-            functions: [
-                ("*", "multiply"),
-                ("+", "add"),
-                ("-", "subtract"),
-                ("/", "divide"),
-                ("mod", "mod"),
-                ("division", "division"),
-                ("format", "format"),
-                ("eqv", "eqv")
-            ].iter().map(|pair| (String::from(pair.0), String::from(pair.1))).clone().collect(),
+            natives,
             generators: &default_generators,
             gensym: Gensym::new(index),
         }
@@ -188,7 +206,7 @@ impl TranspilationVisitor {
         let mut output = String::new();
 
         match callee {
-            Literal(Symbol(s)) if self.functions.contains_key(s) => {
+            Literal(Symbol(s)) if self.natives["functions"].has_key(s.as_str()) => {
                 let symbol = self.gensym.gensym("ArgumentCollection");
                 output.push_str(format!("struct LispDatum* {}[{}];\n", symbol, args.len()).as_str());
 
@@ -196,7 +214,7 @@ impl TranspilationVisitor {
                     output.push_str(format!("{}[{}] = {};\n", symbol, i, arg.accept(self)?).as_str());
                 }
 
-                Ok((output, format!("{}({}, {});\n", self.functions.get(s).unwrap(), symbol, args.len())))
+                Ok((output, format!("{}({}, {});\n", self.natives["functions"][s], symbol, args.len())))
             }
             _ => Err("Callee is not a built in function and may not be invoked at this time.".to_string()),
         }
@@ -208,6 +226,7 @@ impl ASTVisitor<String> for TranspilationVisitor {
         let mut out: String = (self.generators)(node);
 
         out.push_str(match node {
+            LispDatum::Bool(_) => format!("()"),
             LispDatum::Complex(r, i) => format!("({},{})", r, i),
             LispDatum::Real(x) => format!("({})", x),
             LispDatum::Rational(p, q) => format!("({},{})", p, q),
@@ -245,7 +264,47 @@ impl ASTVisitor<String> for TranspilationVisitor {
             Literal(Symbol(s)) => Ok(format!("struct LispDatum* {} = {};", name, s)),
             Literal(d) => Ok(format!("struct LispDatum* {} = {};", name, self.visit_literal(d)?)),
             Definition(_, _) => Err("Cannot assign to a definition.".to_string()),
+            Condition(c, t, f) => Ok(format!("struct LispDatum* {} = {};", name, self.visit_condition(c, t, f)?))
         }
+    }
+
+    fn visit_condition(&mut self, cond: &ASTNode, if_true: &ASTNode, if_false: &ASTNode) -> Result<String, String> {
+        let mut output = String::new();
+        let symbol = self.gensym.gensym("Conditional");
+
+        if !(cond.is_valued() && if_true.is_valued() && if_false.is_valued()) {
+            return Err("Forms used in conditional expression should be valued.".to_string());
+        }
+
+        output.push_str(format!("struct LispDatum* {} = NULL;\n", symbol).as_str());
+
+        // TODO(These can be simplified somewhat by extracting the push_str so long as there's a way
+        //  of expanding the tuple given to format!.
+        match cond {
+            Call(callee, args) => {
+                let (defs, call) = self.split_call(&callee, &args)?;
+                output.push_str(format!("{}\nif (truthy({})) {{\n", defs, &call.as_str()[0..call.len()-2]).as_str());
+            },
+            _ => output.push_str(format!("if (truthy({})) {{\n", cond.accept(self)?).as_str()),
+        }
+
+        match if_true {
+            Call(callee, args) => {
+                let (defs, call) = self.split_call(&callee, &args)?;
+                output.push_str(format!("{}\n{} = {};", defs, symbol, call).as_str());
+            },
+            _ => output.push_str(format!("{} = {};", symbol, cond.accept(self)?).as_str()),
+        }
+
+        match if_false {
+            Call(callee, args) => {
+                let (defs, call) = self.split_call(&callee, &args)?;
+                output.push_str(format!("\n}} else {{\n{} \nstruct LispDatum* {} = {};}}", defs, symbol, call).as_str());
+            },
+            _ => output.push_str(format!("\n}} else {{\nstruct LispDatum* {} = {};}}", symbol, cond.accept(self)?).as_str()),
+        }
+
+        Ok(output)
     }
 }
 
@@ -265,14 +324,12 @@ impl UserDefinition {
     }
 }
 
-// TODO(matthew-c21): Name mangling needs to be pervasive (i.e. every symbol in the program gets
-//  similarly mangled.
-impl ASTVisitor<Vec<ASTNode>> for UserDefinition {
-    fn visit_literal(&mut self, node: &LispDatum) -> Result<Vec<ASTNode>, String> {
-        Ok(vec!(Literal(node.clone())))
+impl ASTVisitor<ASTNode> for UserDefinition {
+    fn visit_literal(&mut self, node: &LispDatum) -> Result<ASTNode, String> {
+        Ok(Literal(node.clone()))
     }
 
-    fn visit_call(&mut self, callee: &ASTNode, args: &Vec<ASTNode>) -> Result<Vec<ASTNode>, String> {
+    fn visit_call(&mut self, callee: &ASTNode, args: &Vec<ASTNode>) -> Result<ASTNode, String> {
         return if UserDefinition::is_define(callee) {
             // A definition takes two arguments: a symbol and a value.
             if 2 != args.len() {
@@ -283,10 +340,10 @@ impl ASTVisitor<Vec<ASTNode>> for UserDefinition {
                 Literal(Symbol(x)) => {
                     match &args[1] {
                         Literal(_) => {
-                            Ok(vec!(Definition(x.clone(), Box::new(args[1].clone()))))
+                            Ok(Definition(x.clone(), Box::new(args[1].clone())))
                         }
                         Call(callee, _) if !Self::is_define(callee.as_ref()) => {
-                            Ok(vec!(Definition(x.clone(), Box::new(args[1].clone()))))
+                            Ok(Definition(x.clone(), Box::new(args[1].clone())))
                         }
                         _ => Err("Cannot assign to that which has no value.".to_string())
                     }
@@ -294,12 +351,16 @@ impl ASTVisitor<Vec<ASTNode>> for UserDefinition {
                 _ => Err("First argument to define must be a symbol".to_string())
             }
         } else {
-            Ok(vec!(Call(Box::from(callee.clone()), args.clone())))
+            Ok(Call(Box::from(callee.clone()), args.clone()))
         };
     }
 
-    fn visit_definition(&mut self, name: &String, value: &ASTNode) -> Result<Vec<ASTNode>, String> {
-        Ok(vec!(Definition(name.clone(), Box::from(value.clone()))))
+    fn visit_definition(&mut self, name: &String, value: &ASTNode) -> Result<ASTNode, String> {
+        Ok(Definition(name.clone(), Box::from(value.clone())))
+    }
+
+    fn visit_condition(&mut self, cond: &ASTNode, if_true: &ASTNode, if_false: &ASTNode) -> Result<ASTNode, String> {
+        Ok(Condition(Box::new(cond.clone()), Box::new(if_true.clone()), Box::new(if_false.clone())))
     }
 }
 
@@ -344,42 +405,80 @@ impl Mangler {
     }
 }
 
-impl ASTVisitor<Vec<ASTNode>> for Mangler {
-    fn visit_literal(&mut self, node: &LispDatum) -> Result<Vec<ASTNode>, String> {
+impl ASTVisitor<ASTNode> for Mangler {
+    fn visit_literal(&mut self, node: &LispDatum) -> Result<ASTNode, String> {
         match node {
-            Symbol(x) => Ok(vec!(Literal(Symbol(self.c_ify(x))))),
-            _ => Ok(vec!(Literal(node.clone())))
+            Symbol(x) => Ok(Literal(Symbol(self.c_ify(x)))),
+            _ => Ok(Literal(node.clone()))
         }
     }
 
-    fn visit_call(&mut self, callee: &ASTNode, args: &Vec<ASTNode>) -> Result<Vec<ASTNode>, String> {
+    fn visit_call(&mut self, callee: &ASTNode, args: &Vec<ASTNode>) -> Result<ASTNode, String> {
         // TODO(matthew-c21): Mangle callee when user defined functions exist.
 
         // Visit each argument, attempting to mangle names along the way.
         let mut new_args: Vec<ASTNode> = Vec::new();
 
         for arg in args {
-            let mut out = arg.accept::<Vec<ASTNode>>(self)?;
-
-            if out.len() != 1 {
-                return Err("Argument incorrectly expanded during name mangling.".to_string());
-            }
-
-            new_args.append(&mut out);
+            new_args.push(arg.accept::<ASTNode>(self)?);
         }
 
-        Ok(vec!(Call(Box::new(callee.clone()), new_args)))
+        Ok(Call(Box::new(callee.clone()), new_args))
     }
 
-    fn visit_definition(&mut self, name: &String, value: &ASTNode) -> Result<Vec<ASTNode>, String> {
-        let new_value: Vec<ASTNode> = value.accept(self)?;
+    fn visit_definition(&mut self, name: &String, value: &ASTNode) -> Result<ASTNode, String> {
+        Ok(Definition(self.c_ify(name).clone(), Box::new(value.accept(self)?)))
+    }
 
-        if new_value.len() != 1 {
-            Err("Incorrect number of values generated by definition during mangling.".to_string())
-        } else {
-            // Cloning here is a hack since `new_value` is destroyed anyway. However, it's
-            // non-trivial to move out of a Vec, assuming it's possible at all.
-            Ok(vec!(Definition(self.c_ify(name).clone(), Box::new(new_value[0].clone()))))
+    fn visit_condition(&mut self, cond: &ASTNode, if_true: &ASTNode, if_false: &ASTNode) -> Result<ASTNode, String> {
+        Ok(Condition(Box::new(cond.accept(self)?), Box::new(if_true.accept(self)?), Box::new(if_false.accept(self)?)))
+    }
+}
+
+struct ConditionalExpansion {}
+
+impl ConditionalExpansion {
+    fn new() -> Self {
+        Self {}
+    }
+
+    fn is_conditional(node: &ASTNode) -> bool {
+        match node {
+            Literal(Symbol(x)) if x == "if" => true,
+            _ => false,
         }
+    }
+}
+
+impl ASTVisitor<ASTNode> for ConditionalExpansion {
+    fn visit_literal(&mut self, node: &LispDatum) -> Result<ASTNode, String> {
+        Ok(Literal(node.clone()))
+    }
+
+    fn visit_call(&mut self, callee: &ASTNode, args: &Vec<ASTNode>) -> Result<ASTNode, String> {
+        return if Self::is_conditional(callee) {
+            // A definition takes two arguments: a symbol and a value.
+            if 3 != args.len() {
+                Err("conditional special form takes three arguments.".to_string())
+            } else {
+                Ok(Condition(Box::new(args[0].clone()), Box::new(args[1].accept(self)?), Box::new(args[2].accept(self)?)))
+            }
+        } else {
+            let mut recursive_args = Vec::new();
+
+            for arg in args {
+                recursive_args.push(arg.accept(self)?);
+            }
+
+            Ok(Call(Box::from(callee.clone()), recursive_args))
+        };
+    }
+
+    fn visit_definition(&mut self, name: &String, value: &ASTNode) -> Result<ASTNode, String> {
+        Ok(Definition(name.clone(), Box::from(value.accept(self)?)))
+    }
+
+    fn visit_condition(&mut self, cond: &ASTNode, if_true: &ASTNode, if_false: &ASTNode) -> Result<ASTNode, String> {
+        Ok(Condition(Box::new(cond.accept(self)?), Box::new(if_true.accept(self)?), Box::new(if_false.accept(self)?)))
     }
 }

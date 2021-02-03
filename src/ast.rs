@@ -1,6 +1,6 @@
 use crate::data::LispDatum;
 use crate::parse::Statement;
-use crate::ast::ASTNode::{Literal, Call};
+use crate::ast::ASTNode::*;
 
 // NOTE(matthew-c21): Special forms to be added here.
 #[derive(Clone)]
@@ -8,6 +8,7 @@ pub enum ASTNode {
     Literal(LispDatum),
     Call(Box<ASTNode>, Vec<ASTNode>),
     Definition(String, Box<ASTNode>),
+    Condition(Box<ASTNode>, Box<ASTNode>, Box<ASTNode>),
 }
 
 impl ASTNode {
@@ -47,18 +48,27 @@ impl ASTNode {
             ASTNode::Literal(d) => visitor.visit_literal(d),
             ASTNode::Call(c, a) => visitor.visit_call(c, a),
             ASTNode::Definition(n, v) => visitor.visit_definition(n, v),
+            ASTNode::Condition(x, y, z) => visitor.visit_condition(x, y, z),
+        }
+    }
+
+    pub fn is_valued(&self) -> bool {
+        match self {
+            Definition(_, _) => false,
+            _ => true,
         }
     }
 }
 
 // NOTE(matthew-c21): This is subject to change in response to special forms.
-// TODO(matthew-c21): Add some kind of Error handling.
 pub trait ASTVisitor<T> {
     fn visit_literal(&mut self, node: &LispDatum) -> Result<T, String>;
 
     fn visit_call(&mut self, callee: &ASTNode, args: &Vec<ASTNode>) -> Result<T, String>;
 
     fn visit_definition(&mut self, name: &String, value: &ASTNode) -> Result<T, String>;
+
+    fn visit_condition(&mut self, cond: &ASTNode, if_true: &ASTNode, if_false: &ASTNode) -> Result<T, String>;
 }
 
 // All optimizers should be in the form ASTNode -> ASTNode.
