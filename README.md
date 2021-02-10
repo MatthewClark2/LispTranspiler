@@ -24,8 +24,25 @@ If the script fails at any point, it leaves the `tmp/` directory.
 
 ## TODO(matthew-c21):
 
-Recursively iterate through each statement, pulling out definitions and values. Perform all necessary definitions first, then assign values at the end.
-
 There is a bug that prevents redefinition of variables. Therefore, there needs to be a set of known user variables so that 
 their values can be reused.
+
+Finish implementing the conditional special form.
+
+Add a symbol table to keep track of different symbols and their respective scopes so that unknown symbols can be caught
+at transpile time rather than at compile time. Consider adding a special name mangling mode for library vs. executable
+code. Only the definitions (vars, fns, macros) from a file should be inherited into a library file. This essentially
+means that compiling a file in library mode discards all top-level expressions, while compiling a file as an executable
+should 
+
+Improve documentation for the format of symbols, numbers, keywords, and hashmap literals. Also add more documentation
+for the behavior of standard library functions.
+
+Add `do`, `loop`, `lambda`, special forms.
+
+Modify the C runtime to use a reference counting garbage collection system. The garbage collector should probably be
+passed between functions as a global-ish variable. This would make it easier to later change the codebase to accept a
+general `LispState` type object.
+
+Implement
 
