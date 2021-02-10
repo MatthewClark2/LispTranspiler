@@ -1,12 +1,10 @@
-use std::{env, fs};
+#[macro_use]
+extern crate nom;
 
-use crate::translation::TranslationUnit;
+use std::{env, fs};
 
 mod lex;
 mod parse;
-mod data;
-mod ast;
-mod translation;
 
 fn main() {
     // foo();
@@ -20,19 +18,7 @@ fn main() {
     }
 }
 
-fn foo() {
-    let tokens = lex::start("(define -x 1)").unwrap();
-    let parse_tree = parse::parse(tokens).unwrap();
-    let ast = ast::ASTNode::from(parse_tree).unwrap();
-    let tu = TranslationUnit::from(ast).unwrap();
-    print!("{}", tu.translate().unwrap())
-}
-
-fn run(program: &str) -> Result<String, String> {
+fn run(_program: &str) -> Result<String, String> {
     // let tokens = lex::start("(format (* 1 2 3))  (format 17i) (format 1.28) (format (+ 6 7 (* 2 7)))").unwrap();
-    let tokens = lex::start(program)?;
-    let parse_tree = parse::parse(tokens)?;
-    let ast = ast::ASTNode::from(parse_tree)?;
-    let tu = TranslationUnit::from(ast)?;
-    tu.translate()
+    unimplemented!();
 }

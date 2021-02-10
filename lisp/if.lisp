@@ -1,1 +1,1 @@
-(format (if (< 5 6) "5 < 6" (+ "crash")))
+(if #t (format "true") (format "false"))

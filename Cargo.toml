@@ -9,5 +9,5 @@ edition = "2018"
 [build-dependencies]
 
 [dependencies]
-
+nom = "6.1.0"
 json = "0.12.4"

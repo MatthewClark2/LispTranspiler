@@ -1,489 +1,144 @@
-use crate::lex::IntLexHalt::{IntTerminal, Imaginary, Numerator, Decimal};
-use crate::lex::FloatLexHalt::FloatTerminal;
-use crate::lex::Token::{Symbol, Int, Float, Complex, Rational, Str, Open, Close, Keyword, True, False};
+use nom::bytes::complete::take_while;
 
-// TODO(matthew-c21): Consider expanding with longs and arbitrary precision types.
-// TODO(matthew-c21): Add lexical information (index in file, len, etc.).
-// TODO(matthew-c21): Change this to a Literal(LispDatum) | SyntaxElement(s) enum.
-#[derive(Debug)]
-#[derive(Clone)]
-pub enum Token {
+#[derive(Clone, Debug, PartialEq)]
+pub struct Token {
+    // This technically limits file sizes, but the maximum size is tremendous.
+    line: u32,
+    value: TokenValue,
+}
+
+impl Token {
+    /// Quick factory function primarily used for testing. Try to avoid this for real code.
+    pub fn from(value: TokenValue) -> Self {
+        Token { line: 0, value }
+    }
+
+    pub fn value(&self) -> TokenValue { self.value.clone() }
+
+    pub fn line(&self) -> u32 { self.line.clone() }
+}
+
+// TODO(matthew-c21): Add macro symbols ('), and other special symbols (#', .)
+#[derive(Debug, Clone, PartialEq)]
+pub enum TokenValue {
     Int(i32),
     Float(f64),
     Complex(f64, f64),
-    // Rationals should be simplified at compile time, not lexing time.
     Rational(i32, i32),
     // TODO(matthew-c21): Add unicode escaped strings.
     Str(String),
+    Keyword(String),
+    Symbol(String),
     Open,
     Close,
-    Keyword(String),
     True,
     False,
-
-    // For now, they can only contain letters.
-    Symbol(String),
 }
 
-impl PartialEq for Token {
-    fn eq(&self, other: &Self) -> bool {
-        match (self, other) {
-            (Int(a), Int(b)) => a == b,
-            (Float(x), Float(y)) => x == y,
-            (Complex(a, b), Complex(c, d)) => a == c && b == d,
-            // Rationals should be simplified at compile time, not lexing time.
-            (Rational(a, b), Rational(c, d)) => a == c && b == d,
-            (Str(x), Str(y)) => x == y,
-            (Open, Open) => true,
-            (Close, Close) => true,
-            (True, True) => true,
-            (False, False) => true,
-            (Keyword(x), Keyword(y)) => x == y,
-            (Symbol(x), Symbol(y)) => x == y,
-            _ => false,
-        }
+pub fn start(_input: &str) -> Vec<Token> {
+    unimplemented!()
+}
+
+// Auxiliary functions
+fn is_token_terminal(ch: char) -> bool {
+    ch.is_whitespace() || ch == '(' || ch == ')'
+}
+
+fn is_symbolic_start(ch: char) -> bool {
+    vec!('*', '$', '+', '-', '_', '!', '?', '/', '%', '&', '^', '~', '<', '>', '=', '@').contains(&ch) || ch.is_alphabetic()
+}
+
+fn is_symbolic_part(ch: char) -> bool {
+    is_symbolic_start(ch) || ch.is_numeric()
+}
+
+fn to_sign(sign: Option<&str>) -> i32 {
+    match sign {
+        Some("-") => -1,
+        _ => 1
     }
 }
 
-enum IntLexHalt { Decimal, Numerator, IntTerminal, Imaginary }
+// Base parsers
+named!(signopt <&str, i32>,
+    map!(opt!(alt!(tag!("+") | tag!("-"))), to_sign)
+);
 
-enum FloatLexHalt { Imaginary, FloatTerminal }
+named!(symbol_content<&str, String>,
+    map!(
+        take_while(is_symbolic_part),
+        String::from
+    )
+);
 
-pub fn start(input: &str) -> Result<Vec<Token>, String> {
-    let mut tokens = Vec::<Token>::new();
+/**
+fn floating(input: &str) -> IResult<&str, f64> {}
 
-    let mut i = input;
+// Main parsers
+fn int(input: &str, line: i32) -> IResult<&str, Token> {}
 
-    while !i.is_empty() {
-        let c = i.chars().nth(0).unwrap();
-        let r = match c {
-            '(' => Ok((Open, &i[1..])),
-            ')' => Ok((Close, &i[1..])),
-            '"' => consume_string(&i[1..]),  // Skip the opening quote.
-            ':' => consume_keyword(i),       // Skip the opening colon.
-            '#' => consume_tag(&i[1..]),
-            x if is_space(x) => {
-                i = &i[1..];
-                continue;
-            }
-            x if is_numeric(x) || x == '.' => consume_number(i),
-            x if is_symbol_start(x) => consume_symbol(i),
-            _ => Err(format!("Unrecognized character `{}`", c)),
-        }?;
+fn float(input: &str, line: i32) -> IResult<&str, Token> {}
 
-        tokens.push(r.0);
-        i = r.1;
-    }
+fn rational(input: &str, line: i32) -> IResult<&str, Token> {}
 
-    Ok(tokens)
-}
+fn complex(input: &str, line: i32) -> IResult<&str, Token> {}
 
-fn check_terminated(input: &str) -> bool {
-    input.len() == 0 || is_terminal_symbol(input.chars().nth(0).unwrap())
-}
+fn string(input: &str, line: i32) -> IResult<&str, Token> {}
 
-fn consume_tag(input: &str) -> Result<(Token, &str), String> {
-    if input.len() == 0 {
-        Err("Expected something after tag.".to_string())
-    } else {
-        let i = input;
-        match i.chars().nth(0).unwrap() {
-            't' => if check_terminated(&i[1..]) { Ok((True, &i[1..])) } else { Err("Unexpected continuation of tag".to_string()) },
-            'f' => if check_terminated(&i[1..]) { Ok((False, &i[1..])) } else { Err("Unexpected continuation of tag".to_string()) },
-            _ => Err("Invalid tag".to_string()),
-        }
-    }
-}
+fn keyword(input: &str, line: i32) -> IResult<&str, Token> {}
 
-// TODO(matthew-c21): Rust probably has these built in better.
-// TODO(matthew-c21): All of these create a slice each time they are called. This could probably be
-//  changed to static allocation.
-fn is_numeric(s: char) -> bool {
-    ('0'..='9').contains(&s)
-}
-
-fn is_alpha(s: char) -> bool {
-    ('a'..='z').contains(&s) || ('A'..='Z').contains(&s)
-}
-
-fn is_symbol_start(s: char) -> bool {
-    is_alpha(s) || vec!('+', '-', '*', '/', '<', '>', '?', '@', '!', '_', '=').contains(&s)
-}
-
-fn is_symbol_part(s: char) -> bool {
-    is_symbol_start(s) || is_numeric(s)
-}
-
-fn is_space(s: char) -> bool {
-    [' ', '\t', '\n', '\r'].contains(&s)
-}
-
-fn is_terminal_symbol(s: char) -> bool {
-    ['(', ')'].contains(&s) || is_space(s)
-}
-
-fn consume_string(input: &str) -> Result<(Token, &str), String> {
-    let mut i = input;
-    let mut s = String::new();
-    let mut naturally_terminated = false;
-
-    while !i.is_empty() {
-        let next = i.chars().nth(0).unwrap();
-        i = &i[1..];
-
-        match next {
-            '"' => {
-                naturally_terminated = true;
-                break;
-            }
-            '\n' => return Err("Unexpected newline while lexing string".to_string()),
-            '\\' => {
-                let r = consume_escape(i)?;
-                s.push(r.0);
-                i = r.1;
-            }
-            c => s.push(c),
-        }
-    }
-
-    if naturally_terminated {
-        Ok((Str(s), i))
-    } else {
-        Err("Expected end of string literal.".to_string())
-    }
-}
-
-fn consume_escape(input: &str) -> Result<(char, &str), String> {
-    let e = input.chars().nth(0);
-
-    e.map_or(Err("Unexpected end of input.".to_string()), |c| {
-        let c = match c {
-            't' => '\t',
-            'n' => '\n',
-            'r' => '\r',
-            _ => return Err(format!("Unexpected escape sequence `\\{}`", c).to_string())
-        };
-
-        Ok((c, &input[1..]))
-    })
-}
-
-fn consume_keyword(input: &str) -> Result<(Token, &str), String> {
-    Err(input.to_string())
-}
-
-fn consume_symbol(input: &str) -> Result<(Token, &str), String> {
-    assert_ne!(input.len(), 0);
-    let first = input.chars().nth(0).unwrap();
-    assert!(is_symbol_start(first));
-
-    let mut i = &input[1..];
-
-    let mut sym = String::new();
-    sym.push(first);
-
-    while !i.is_empty() {
-        let x = i.chars().nth(0).unwrap();
-
-        if is_symbol_part(x) {
-            sym.push(x)
-        } else if is_terminal_symbol(x) {
-            break;
-        } else {
-            return Err(format!("Unexpected `{}` while parsing symbol.", x));
-        }
-
-        i = &i[1..];
-    }
-
-    Ok((Symbol(sym), i))
-}
-
-fn consume_number(input: &str) -> Result<(Token, &str), String> {
-    // TODO(matthew-c21): This method fails for a+bi form complex numbers. Fix that.
-    match consume_int(input) {
-        Ok((x, out, IntTerminal)) => Ok((Int(x.parse().unwrap()), out)),
-        Ok((x, out, Imaginary)) => Ok((Complex(0., x.parse().unwrap()), out)),
-        Ok((x, out, Decimal)) => match continue_float(out, x) {
-            Ok((x, out, FloatLexHalt::Imaginary)) => Ok((Complex(0., x.parse().unwrap()), out)),
-            Ok((x, out, FloatTerminal)) => Ok((Float(x.parse().unwrap()), out)),
-            Err(msg) => Err(msg),
-        }
-        Ok((x, out, Numerator)) => match consume_int(out) {
-            Ok((y, out, IntTerminal)) => Ok((Rational(x.parse().unwrap(), y.parse().unwrap()), out)),
-            Ok(_) => Err(String::from("Illegal continuation of rational number.")),
-            Err(x) => Err(x),
-        }
-        Err(msg) => Err(msg)
-    }
-}
-
-fn continue_float(input: &str, start: String) -> Result<(String, &str, FloatLexHalt), String> {
-    // assert_eq!(input.chars().nth(0).unwrap(), '.', "Float must begin with decimal");
-
-    let mut i = input;
-    let mut s = start;
-    s.push('.');
-
-    while !i.is_empty() && !is_terminal_symbol(i.chars().nth(0).unwrap()) {
-        let x = i.chars().nth(0).unwrap();
-        let rest = &i[1..];
-
-        match x {
-            'i' => return Ok((s, rest, FloatLexHalt::Imaginary)),
-            x if is_numeric(x) => s.push(x),
-            x if is_terminal_symbol(x) => return Ok((s, i, FloatTerminal)),
-            _ => return Err(format!("Unexpected value while lexing float `{}`", x))
-        }
-
-        i = rest;
-    }
-
-    Ok((s, i, FloatTerminal))
-}
-
-fn consume_int(input: &str) -> Result<(String, &str, IntLexHalt), String> {
-    let mut i = input;
-    let mut s = String::new();
-
-    while !i.is_empty() {
-        let x = i.chars().nth(0).unwrap();
-        let rest = &i[1..];
-
-        match x {
-            '.' => return Ok((s, rest, Decimal)),
-            '/' => return Ok((s, rest, Numerator)),
-            'i' => return Ok((s, rest, Imaginary)),
-            x if is_terminal_symbol(x) => return Ok((s, i, IntTerminal)),
-            x if is_numeric(x) => s.push(x),
-            x => return Err(format!("Expected part of number. Found `{}`", x))
-        }
-
-        i = rest;
-    }
-
-    Ok((s, i, IntTerminal))
-}
-
+fn symbol(input: &str, line: i32) -> IResult<&str, Token> {}
+*/
 #[cfg(test)]
 mod tests {
     use crate::lex::*;
-    use crate::lex::start;
 
     #[test]
-    fn lparen_only() {}
+    fn valid_ints() {}
 
     #[test]
-    fn rparen_only() {}
+    fn invalid_ints() {}
 
     #[test]
-    fn simple_strings() {
-        let r = start("\"\"").unwrap();
-        assert_eq!(1, r.len());
-        assert_eq!(Str("".to_string()), r[0]);
-
-        let r = start("\"abcd\"").unwrap();
-        assert_eq!(1, r.len());
-        assert_eq!(Str("abcd".to_string()), r[0]);
-
-        let r = start("\"0 a b C ^\"").unwrap();
-        assert_eq!(1, r.len());
-        assert_eq!(Str("0 a b C ^".to_string()), r[0]);
-    }
+    fn valid_floats() {}
 
     #[test]
-    #[should_panic]
-    fn unterminated_string1() {
-        start("\"a b c").unwrap();
-    }
-
-    #[test]
-    #[should_panic]
-    fn unterminated_string2() {
-        start("\"").unwrap();
-    }
-
-    #[test]
-    #[should_panic]
-    fn incomplete_escape() {
-        start("\"\\\"").unwrap();
-    }
-
-    #[test]
-    #[should_panic]
-    fn newline_string() {
-        start("\"this is a \n string\"").unwrap();
-    }
-
-    #[test]
-    fn valid_escaped_string() {
-        let r = start("\"lots\\nof\\tspace\\r\"").unwrap();
-        assert_eq!(1, r.len());
-        assert_eq!(Str("lots\nof\tspace\r".to_string()), r[0]);
-    }
-
-    #[test]
-    #[should_panic]
-    fn invalid_escaped_string() {
-        start("\"\\w\"").unwrap();
-    }
-
-    #[test]
-    fn valid_numbers() {
-        // let r = start("123 12i 6/12 1.23 0. .8 .83i 1.i").unwrap();
-        let r1 = &start("123").unwrap()[0];
-        let r2 = &start("12i").unwrap()[0];
-        let r3 = &start("6/12").unwrap()[0];
-        let r4 = &start("1.23").unwrap()[0];
-        let r5 = &start("0.").unwrap()[0];
-        let r6 = &start(".8").unwrap()[0];
-        let r7 = &start(".83i").unwrap()[0];
-        let r8 = &start("1.i").unwrap()[0];
-        // assert_eq!(r.len(), 8);
-        assert_eq!(*r1, (Int(123)));
-        assert_eq!(*r2, (Complex(0., 12.)));
-        assert_eq!(*r3, (Rational(6, 12)));
-        assert_eq!(*r4, (Float(1.23)));
-        assert_eq!(*r5, (Float(0.)));
-        assert_eq!(*r6, (Float(0.8)));
-        assert_eq!(*r7, (Complex(0., 0.83)));
-        assert_eq!(*r8, (Complex(0., 1.)));
-    }
-
-    #[test]
-    fn invalid_numbers() {}
+    fn invalid_floats() {}
 
     #[test]
     fn valid_symbols() {
-        let r = start("+").unwrap();
-        assert_eq!(r.len(), 1);
-        assert_eq!(r[0], Symbol(String::from("+")));
-
-        let r = start("_z").unwrap();
-        assert_eq!(r.len(), 1);
-        assert_eq!(r[0], Symbol(String::from("_z")));
-
-        let r = start("abc").unwrap();
-        assert_eq!(r.len(), 1);
-        assert_eq!(r[0], Symbol(String::from("abc")));
-
-        let r = start("++localhost++").unwrap();
-        assert_eq!(r.len(), 1);
-        assert_eq!(r[0], Symbol(String::from("++localhost++")));
-
-        let r = start("lispy-writing").unwrap();
-        assert_eq!(r.len(), 1);
-        assert_eq!(r[0], Symbol(String::from("lispy-writing")));
-
-        let r = start("+sNaKe_CaSe-").unwrap();
-        assert_eq!(r.len(), 1);
-        assert_eq!(r[0], Symbol(String::from("+sNaKe_CaSe-")));
+        assert_eq!(symbol_content("sadf"), Ok(("", String::from("sadf"))));
+        assert_eq!(symbol_content("?"), Ok(("", String::from("?"))));
+        assert_eq!(symbol_content("+12a"), Ok(("", String::from("+12a"))));
     }
 
     #[test]
     fn invalid_symbols() {}
 
     #[test]
-    #[ignore]
     fn valid_keywords() {}
 
     #[test]
-    #[ignore]
     fn invalid_keywords() {}
 
     #[test]
-    fn function_call() {
-        let r = start("(+ a b c+d*e 12. .2i)").unwrap();
-
-        assert_eq!(r.len(), 8);
-        assert_eq!(r[0], Open);
-        assert_eq!(r[1], Symbol(String::from("+")));
-        assert_eq!(r[2], Symbol(String::from("a")));
-        assert_eq!(r[3], Symbol(String::from("b")));
-        assert_eq!(r[4], Symbol(String::from("c+d*e")));
-        assert_eq!(r[5], (Float(12.0)));
-        assert_eq!(r[6], (Complex(0.0, 0.2)));
-        assert_eq!(r[7], Close);
-    }
+    fn valid_complex() {}
 
     #[test]
-    fn unbalanced_input() {
-        let r = start("((())()").unwrap();
-
-        assert_eq!(r.len(), 7);
-        assert_eq!(r[0], Open);
-        assert_eq!(r[1], Open);
-        assert_eq!(r[2], Open);
-        assert_eq!(r[3], Close);
-        assert_eq!(r[4], Close);
-        assert_eq!(r[5], Open);
-        assert_eq!(r[6], Close);
-    }
+    fn invalid_complex() {}
 
     #[test]
-    fn booleans() {
-        let r = start("#t #f").unwrap();
-
-        assert_eq!(2, r.len());
-
-        assert_eq!(True, r[0]);
-        assert_eq!(False, r[1]);
-    }
+    fn valid_rational() {}
 
     #[test]
-    #[should_panic]
-    fn extended_valid_tags() {
-        start("#true").unwrap();
-    }
+    fn invalid_rational() {}
 
     #[test]
-    #[should_panic]
-    fn invalid_tags() {
-        start("#x").unwrap();
-    }
+    fn exhaustive() {}
 
     #[test]
-    fn consecutive_tokens() {
-        // I think the issue is that terminal symbols are being ignored on return.
-        let r = start("(a) (1)) (c d) #t #f 1").unwrap();
-        assert_eq!(r.len(), 14);
-
-        assert_eq!(r[0], Open);
-        assert_eq!(r[1], Symbol("a".to_string()));
-        assert_eq!(r[2], Close);
-        assert_eq!(r[3], Open);
-        assert_eq!(r[4], Int(1));
-        assert_eq!(r[5], Close);
-        assert_eq!(r[6], Close);
-        assert_eq!(r[7], Open);
-        assert_eq!(r[8], Symbol("c".to_string()));
-        assert_eq!(r[9], Symbol("d".to_string()));
-        assert_eq!(r[10], Close);
-        assert_eq!(r[11], True);
-        assert_eq!(r[12], False);
-        assert_eq!(r[13], Int(1));
-    }
+    fn booleans() {}
 
     #[test]
-    fn multiple_statements() {
-        let r = start("a 12 d1- (* 1i 2. (+ x 3)) ()").unwrap();
-
-        assert_eq!(r.len(), 15);
-
-        assert_eq!(r[0], Symbol("a".to_string()));
-        assert_eq!(r[1], Int(12));
-        assert_eq!(r[2], Symbol("d1-".to_string()));
-        assert_eq!(r[3], Open);
-        assert_eq!(r[4], Symbol("*".to_string()));
-        assert_eq!(r[5], Complex(0., 1.));
-        assert_eq!(r[6], Float(2.));
-        assert_eq!(r[7], Open);
-        assert_eq!(r[8], Symbol("+".to_string()));
-        assert_eq!(r[9], Symbol("x".to_string()));
-        assert_eq!(r[10], Int(3));
-        assert_eq!(r[11], Close);
-        assert_eq!(r[12], Close);
-        assert_eq!(r[13], Open);
-        assert_eq!(r[14], Close);
-    }
+    fn parens() {}
 }
