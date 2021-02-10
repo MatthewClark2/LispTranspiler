@@ -1,4 +1,7 @@
+use std::str::FromStr;
 use nom::bytes::complete::take_while;
+use nom::character::complete::{digit0, digit1};
+use nom::IResult;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Token {
@@ -60,8 +63,8 @@ fn to_sign(sign: Option<&str>) -> i32 {
 }
 
 // Base parsers
-named!(signopt <&str, i32>,
-    map!(opt!(alt!(tag!("+") | tag!("-"))), to_sign)
+named!(signopt <&str, Option<&str>>,
+    opt!(alt!(tag!("+") | tag!("-")))
 );
 
 named!(symbol_content<&str, String>,
@@ -71,23 +74,97 @@ named!(symbol_content<&str, String>,
     )
 );
 
+named!(exponent<&str, &str>,
+    recognize!(
+        tuple!(
+            alt!(tag!("e") | tag!("E")),
+            signopt,
+            digit1
+        )
+    )
+);
+
+named!(floating <&str, f64>,
+    map!(
+        recognize!(
+            tuple!(
+                digit1,
+                tag!("."),
+                digit0,
+                opt!(exponent)
+            )
+        ),
+        |x| { FromStr::from_str(x).unwrap() }
+    )
+);
+
+named!(digits <&str, i32>,
+    map!(
+        digit1,
+        |x| FromStr::from_str(x).unwrap()
+    )
+);
+
+fn signed<T>(f: &'static dyn Fn(&str) -> IResult<&str, T>) -> Box<dyn Fn(&str) -> IResult<&str, T>> {
+    Box::new(|x| {
+        map!(
+            x,
+            pair!(map!(signopt, to_sign), f),
+            |y| { y.0 * y.1 }
+        )
+    })
+}
+
+// Main Parsers
+
+fn int(input: &str, line: u32) -> IResult<&str, Token> {
+    let r: (&str, i32) = map!(
+        input,
+        recognize!(
+            pair!(signopt, digit1)
+        ),
+        |x| { FromStr::from_str(x).unwrap() }
+    )?;
+
+    Ok((r.0, Token { value: TokenValue::Int(r.1), line }))
+}
+
+
+fn float(input: &str, line: u32) -> IResult<&str, Token> {
+    let r: (&str, f64) = map!(
+        input,
+        recognize!(
+            pair!(signopt, floating)
+        ),
+        |x| { FromStr::from_str(x).unwrap() }
+    )?;
+
+    Ok((r.0, Token { value: TokenValue::Float(r.1), line }))
+}
+
+
+fn rational(input: &str, line: u32) -> IResult<&str, Token> {
+    let r = tuple!(input, signed<i32>, tag!("/"), digits)?;
+
+    let num = (r.1).0 * (r.1).1;
+    let den = r.3;
+
+    Ok((r.0, Token { line, value: TokenValue::Rational(num, den)}))
+}
+
 /**
-fn floating(input: &str) -> IResult<&str, f64> {}
 
 // Main parsers
-fn int(input: &str, line: i32) -> IResult<&str, Token> {}
 
-fn float(input: &str, line: i32) -> IResult<&str, Token> {}
 
-fn rational(input: &str, line: i32) -> IResult<&str, Token> {}
 
-fn complex(input: &str, line: i32) -> IResult<&str, Token> {}
+fn complex(input: &str, line: u32) -> IResult<&str, Token> {}
 
-fn string(input: &str, line: i32) -> IResult<&str, Token> {}
+fn string(input: &str, line: u32) -> IResult<&str, Token> {}
 
-fn keyword(input: &str, line: i32) -> IResult<&str, Token> {}
+fn keyword(input: &str, line: u32) -> IResult<&str, Token> {}
 
-fn symbol(input: &str, line: i32) -> IResult<&str, Token> {}
+fn symbol(input: &str, line: u32) -> IResult<&str, Token> {}
 */
 #[cfg(test)]
 mod tests {
