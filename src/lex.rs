@@ -2,7 +2,7 @@ use nom::branch::alt;
 use nom::bytes::complete::tag;
 use nom::bytes::complete::take_while;
 use nom::character::complete::{char, digit0, digit1};
-use nom::combinator::{map, opt, recognize, complete};
+use nom::combinator::{complete, map, opt, recognize};
 use nom::multi::many0;
 use nom::sequence::{delimited, pair, preceded, tuple};
 use nom::IResult;
@@ -48,8 +48,36 @@ pub enum TokenValue {
     False,
 }
 
-pub fn start(_input: &str) -> Result<Vec<Token>, String> {
-    unimplemented!()
+// NOTE(matthew-c21): Consider adding the offending text to this as well.
+pub struct LexError {
+    msg: String,
+    line: u32,
+}
+
+impl ToString for LexError {
+    fn to_string(&self) -> String {
+        if self.offending_text.is_some() {
+            format!("On line {}: {} {}", self.line, self.offending_text.as_ref().unwrap(), self.msg)
+        } else {
+            format!("On line {}: {}", self.line, self.msg)
+        }
+    }
+}
+
+pub fn start(input: &str) -> Result<Vec<Token>, LexError> {
+    let mut tokens: Vec<Token> = Vec::new();
+
+    let mut s = input;
+    let _ws = "";
+
+    while !s.is_empty() {
+        // Consume whitespace.
+        (s, _ws) = take_while(char::is_whitespace)(s)?;
+
+        // Try multiple parsers until one works.
+    }
+
+    Ok(tokens)
 }
 
 // Auxiliary functions
@@ -61,7 +89,7 @@ fn is_symbolic_start(ch: char) -> bool {
     vec![
         '*', '$', '+', '-', '_', '!', '?', '/', '%', '&', '^', '~', '<', '>', '=', '@',
     ]
-    .contains(&ch)
+        .contains(&ch)
         || ch.is_alphabetic()
 }
 
@@ -73,9 +101,9 @@ fn signed<T>(
     f: &'static dyn Fn(&str) -> IResult<&str, T>,
     required: bool,
 ) -> Box<dyn Fn(&str) -> IResult<&str, T>>
-where
-    T: FromStr,
-    <T as FromStr>::Err: Debug,
+    where
+        T: FromStr,
+        <T as FromStr>::Err: Debug,
 {
     if required {
         Box::new(move |input| {
@@ -120,7 +148,11 @@ named!(exponent<&str, &str>,
 
 fn floating(input: &str) -> IResult<&str, f64> {
     map(
-        recognize(tuple((digit1, opt(complete(preceded(tag("."), digit0))), opt(complete(exponent))))),
+        recognize(tuple((
+            digit1,
+            opt(complete(preceded(tag("."), digit0))),
+            opt(complete(exponent)),
+        ))),
         |x| FromStr::from_str(x).unwrap(),
     )(input)
 }
@@ -289,20 +321,120 @@ mod tests {
 
     #[test]
     fn valid_rational() {
-        // TODO(matthew-c21): Comprehensive testing should ensure that things like +1/+2 get lexed
-        //  as symbols.
         assert_eq!(rational("1/2"), Ok(("", Rational(1, 2))));
         assert_eq!(rational("-1/2"), Ok(("", Rational(-1, 2))));
         assert_eq!(rational("+1/2"), Ok(("", Rational(1, 2))));
     }
 
     #[test]
-    fn exhaustive() {}
+    fn exhaustive() {
+        assert_eq!(
+            start("+1/+2"),
+            Ok(vec!(Token {
+                line: 1,
+                value: Symbol("+1/+2".to_string()),
+            }))
+        );
+        assert_eq!(
+            start(
+                "1/3 +2.5 ())\n\
+                ( (1) (list :a :b :c)\n\
+            ;; this is a comment and should be treated like one.\n\
+             #t \n\
+               \"hello, world\" ;; end of line comment"
+            ),
+            Ok(vec!(
+                Token {
+                    line: 1,
+                    value: Rational(1, 3),
+                },
+                Token {
+                    line: 1,
+                    value: Float(2.5),
+                },
+                Token {
+                    line: 1,
+                    value: Open,
+                },
+                Token {
+                    line: 1,
+                    value: Close,
+                },
+                Token {
+                    line: 1,
+                    value: Close,
+                },
+                Token {
+                    line: 2,
+                    value: Open,
+                },
+                Token {
+                    line: 2,
+                    value: Open,
+                },
+                Token {
+                    line: 2,
+                    value: Int(1),
+                },
+                Token {
+                    line: 2,
+                    value: Close,
+                },
+                Token {
+                    line: 2,
+                    value: Open,
+                },
+                Token {
+                    line: 2,
+                    value: Symbol("list".to_string()),
+                },
+                Token {
+                    line: 2,
+                    value: Keyword("a".to_string()),
+                },
+                Token {
+                    line: 2,
+                    value: Keyword("b".to_string()),
+                },
+                Token {
+                    line: 2,
+                    value: Keyword("c".to_string()),
+                },
+                Token {
+                    line: 2,
+                    value: Close,
+                },
+                Token {
+                    line: 4,
+                    value: True,
+                },
+                Token {
+                    line: 5,
+                    value: Str("hello, world".to_string()),
+                }
+            ))
+        );
+    }
+
+    #[test]
+    fn failed_lexical_tokens() {
+        // Boolean not followed by terminal
+        assert_eq!(start("#tfalse"), LexError { line: 1, msg: "Unexpected character `f` while lexing boolean.".to_string() });
+
+        // Colon not followed by keyword
+        assert_eq!(start(": "), LexError { line: 1, msg: "Colon should only serve as the start of a keyword.".to_string() });
+        assert_eq!(start(" :( "), LexError { line: 1, msg: "Colon should only serve as the start of a keyword.".to_string() });
+        assert_eq!(start(" :)"), LexError { line: 1, msg: "Colon should only serve as the start of a keyword.".to_string() });
+
+        // Standalone decimal point
+        assert_eq!(start(" asdf \n. ( )"), LexError { line: 2, msg: "Unexpected character `.`.".to_string() });
+
+        // Floating point number not starting with a digit.
+        assert_eq!(start(" asdf \n.123 ( )"), LexError { line: 2, msg: "Unexpected character `.`.".to_string() });
+    }
 
     #[test]
     fn booleans() {
-        // TODO(matthew-c21): This means more comprehensive tests will need to fail to return bool
-        //  tokens when there is a non-terminal character following a boolean expression.
         assert_eq!(boolean("#t"), Ok(("", True)));
         assert_eq!(boolean("#f"), Ok(("", False)));
         assert_eq!(boolean("#ft"), Ok(("t", False)));
@@ -325,7 +457,4 @@ mod tests {
             Ok(("", Str("goodbye\\\"".to_string())))
         )
     }
-
-    #[test]
-    fn parens() {}
 }
