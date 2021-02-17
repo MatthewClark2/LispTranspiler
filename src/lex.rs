@@ -1,5 +1,5 @@
 use nom::branch::alt;
-use nom::bytes::complete::tag;
+use nom::bytes::complete::{tag, take_while1};
 use nom::bytes::complete::take_while;
 use nom::character::complete::{char, digit0, digit1};
 use nom::combinator::{complete, map, opt, recognize};
@@ -8,6 +8,7 @@ use nom::sequence::{delimited, pair, preceded, tuple};
 use nom::IResult;
 use std::fmt::Debug;
 use std::str::FromStr;
+use nom::error::Error;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Token {
@@ -49,6 +50,7 @@ pub enum TokenValue {
 }
 
 // NOTE(matthew-c21): Consider adding the offending text to this as well.
+#[derive(PartialEq, Debug)]
 pub struct LexError {
     msg: String,
     line: u32,
@@ -56,25 +58,97 @@ pub struct LexError {
 
 impl ToString for LexError {
     fn to_string(&self) -> String {
-        if self.offending_text.is_some() {
-            format!("On line {}: {} {}", self.line, self.offending_text.as_ref().unwrap(), self.msg)
-        } else {
-            format!("On line {}: {}", self.line, self.msg)
-        }
+        format!("On line {}: {}", self.line, self.msg)
     }
 }
 
 pub fn start(input: &str) -> Result<Vec<Token>, LexError> {
     let mut tokens: Vec<Token> = Vec::new();
 
-    let mut s = input;
-    let _ws = "";
+    let mut rest = input;
 
-    while !s.is_empty() {
+    let mut line = 1;
+
+    while !rest.is_empty() {
         // Consume whitespace.
-        (s, _ws) = take_while(char::is_whitespace)(s)?;
+        let x: IResult<&str, u32, Error<&str>> = whitespace(rest);
 
-        // Try multiple parsers until one works.
+        let (s, lines_read) = x.unwrap();
+
+        line += lines_read;
+
+        // Since whitespace may have been consumed, it's possible that input was exhausted.
+        if s.is_empty() { return Ok(tokens); };
+
+        // Ignore line comments.
+        if s.chars().nth(0).unwrap() == ';' {
+            let x: IResult<&str, &str, Error<&str>> = take_while(|x| x != '\n')(s);
+
+            let (s, comment) = x.unwrap();
+
+            // If a comment is consumed, it will be followed by at least more whitespace, and maybe
+            // more comments. To get around this, we just restart the loop until no comment is
+            // found.
+            if !comment.is_empty() {
+                rest = s;
+                continue;
+            }
+        }
+
+        // All leading comments and whitespace have been stripped.
+
+        // Basic tokens and parsers.
+
+        // Strings are different, so we handle them differently.
+        let x = if s.chars().nth(0).unwrap() == '"' {
+            match string(s) {
+                Err(_) => Err(LexError {line, msg: format!("Error while attempting to read string content")}),
+                Ok((s, v)) => Ok((s, v))
+            }
+        } else {
+
+            // There's something left in the stream, so we first try to consume everything up to the
+            // next token terminal.
+            let (s, next_token) = take_while::<fn(char) -> bool, &str, Error<&str>>(|x| !is_token_terminal(x))(s).unwrap();
+
+            // If the next token is empty, that means the next character is a token terminal. Whitespace
+            // has already been stripped, so it must be a single character token.
+            if next_token.is_empty() {
+                match s.chars().nth(0).unwrap() {
+                    '(' => Ok((&s[1..], TokenValue::Open)),
+                    ')' => Ok((&s[1..], TokenValue::Close)),
+                    x => Err(LexError { line, msg: format!("Unexpected character `{}`.", x) })  // This should be an illegal state.
+                }
+            } else {
+                // Now we try each parser.
+                let mut parsers = Vec::new();
+                parsers.push(int as fn(&str) -> IResult<&str, TokenValue>);
+                parsers.push(float);
+                parsers.push(rational);
+                parsers.push(complex);
+                parsers.push(boolean);
+                parsers.push(string);
+                parsers.push(keyword);
+                parsers.push(symbol);
+                let mut possibilities: Vec<TokenValue> = parsers.iter().map(|f| {
+                    match f(next_token) {
+                        Ok(("", v)) => Ok(v),
+                        _ => Err("")
+                    }
+                }).filter(Result::is_ok).map(Result::unwrap).collect();
+
+                if possibilities.is_empty() {
+                    Err(LexError { line, msg: format!("Unable to match `{}` to a token value.", next_token) })
+                } else {
+                    Ok((s, possibilities.remove(0)))
+                }
+            }
+        }?;
+
+        let (s, value) = x;
+        rest = s;
+
+        tokens.push(Token { line, value })
     }
 
     Ok(tokens)
@@ -121,6 +195,18 @@ fn signed<T>(
 }
 
 // Base parsers
+fn whitespace(input: &str) -> IResult<&str, u32> {
+    let (rest, ws) = take_while(char::is_whitespace)(input)?;
+
+    let mut lines_read: u32 = 0;
+
+    for c in ws.chars() {
+        if c == '\n' { lines_read += 1; }
+    }
+
+    Ok((rest, lines_read))
+}
+
 named!(sign <&str, &str>,
     alt!(tag!("+") | tag!("-"))
 );
@@ -131,7 +217,9 @@ named!(signopt <&str, Option<&str>>,
 
 named!(symbol_content<&str, String>,
     map!(
-        take_while(is_symbolic_part),
+        recognize!(
+            pair!(take_while1(is_symbolic_start), take_while(is_symbolic_part))
+        ),
         String::from
     )
 );
@@ -239,7 +327,7 @@ fn complex(input: &str) -> IResult<&str, TokenValue> {
 }
 
 fn keyword(input: &str) -> IResult<&str, TokenValue> {
-    let r = pair!(input, tag!(":"), symbol_content)?;
+    let r = pair(tag(":"), map(take_while1(is_symbolic_part), String::from))(input)?;
 
     Ok((r.0, TokenValue::Keyword((r.1).1)))
 }
@@ -419,18 +507,18 @@ mod tests {
     #[test]
     fn failed_lexical_tokens() {
         // Boolean not followed by terminal
-        assert_eq!(start("#tfalse"), LexError { line: 1, msg: "Unexpected character `f` while lexing boolean.".to_string() });
+        assert_eq!(start("#tfalse"), Err(LexError { line: 1, msg: "Unable to match `#tfalse` to a token value.".to_string() }));
 
         // Colon not followed by keyword
-        assert_eq!(start(": "), LexError { line: 1, msg: "Colon should only serve as the start of a keyword.".to_string() });
-        assert_eq!(start(" :( "), LexError { line: 1, msg: "Colon should only serve as the start of a keyword.".to_string() });
-        assert_eq!(start(" :)"), LexError { line: 1, msg: "Colon should only serve as the start of a keyword.".to_string() });
+        assert_eq!(start(": "), Err(LexError { line: 1, msg: "Unable to match `:` to a token value.".to_string() }));
+        assert_eq!(start(" :( "), Err(LexError { line: 1, msg: "Unable to match `:` to a token value.".to_string() }));
+        assert_eq!(start(" :)"), Err(LexError { line: 1, msg: "Unable to match `:` to a token value.".to_string() }));
 
         // Standalone decimal point
-        assert_eq!(start(" asdf \n. ( )"), LexError { line: 2, msg: "Unexpected character `.`.".to_string() });
+        assert_eq!(start(" asdf \n. ( )"), Err(LexError { line: 2, msg: "Unable to match `.` to a token value.".to_string() }));
 
         // Floating point number not starting with a digit.
-        assert_eq!(start(" asdf \n.123 ( )"), LexError { line: 2, msg: "Unexpected character `.`.".to_string() });
+        assert_eq!(start(" asdf \n.123 ( )"), Err(LexError { line: 2, msg: "Unable to match `.123` to a token value.".to_string() }));
     }
 
     #[test]
