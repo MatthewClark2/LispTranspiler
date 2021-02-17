@@ -2,7 +2,7 @@ use nom::branch::alt;
 use nom::bytes::complete::take_while;
 use nom::bytes::complete::{tag, take_while1};
 use nom::character::complete::{char, digit0, digit1};
-use nom::combinator::{complete, map, opt, recognize};
+use nom::combinator::{complete, map, opt, recognize, value};
 use nom::error::Error;
 use nom::multi::many0;
 use nom::sequence::{delimited, pair, preceded, tuple};
@@ -174,7 +174,7 @@ fn is_symbolic_start(ch: char) -> bool {
     vec![
         '*', '$', '+', '-', '_', '!', '?', '/', '%', '&', '^', '~', '<', '>', '=', '@',
     ]
-    .contains(&ch)
+        .contains(&ch)
         || ch.is_alphabetic()
 }
 
@@ -186,9 +186,9 @@ fn signed<T>(
     f: &'static dyn Fn(&str) -> IResult<&str, T>,
     required: bool,
 ) -> Box<dyn Fn(&str) -> IResult<&str, T>>
-where
-    T: FromStr,
-    <T as FromStr>::Err: Debug,
+    where
+        T: FromStr,
+        <T as FromStr>::Err: Debug,
 {
     if required {
         Box::new(move |input| {
@@ -317,12 +317,15 @@ fn rational(input: &str) -> IResult<&str, TokenValue> {
 fn complex(input: &str) -> IResult<&str, TokenValue> {
     let re = signed(&floating, false);
     let im = signed(&floating, true);
-    let r = tuple!(
-        input,
-        re,
-        alt!(im | value!(1.0, tag!("+")) | value!(-1.0, tag!("-"))),
-        tag!("i")
-    )?;
+
+    let r = alt((
+        tuple((
+            re,
+            alt((im, value(1.0, tag("+")), value(-1.0, tag("-")))),
+            tag("i"),
+        )),
+        tuple((|s| { Ok((s, 0.0)) }, signed(&floating, false), tag("i"))),
+    ))(input)?;
 
     let x = r.1;
     let re = x.0;
@@ -410,6 +413,9 @@ mod tests {
         assert_eq!(complex("-1.25+2e3i"), Ok(("", Complex(-1.25, 2e3))));
         assert_eq!(complex("1+i"), Ok(("", Complex(1.0, 1.0))));
         assert_eq!(complex("1.-i"), Ok(("", Complex(1.0, -1.0))));
+        assert_eq!(complex("-2.4i"), Ok(("", Complex(0.0, -2.4))));
+        assert_eq!(complex("1e1i"), Ok(("", Complex(0.0, 1e1))));
+        assert_eq!(complex("1i"), Ok(("", Complex(0.0, 1.0))));
     }
 
     #[test]
@@ -516,7 +522,7 @@ mod tests {
             start("#tfalse"),
             Err(LexError {
                 line: 1,
-                msg: "Unable to match `#tfalse` to a token value.".to_string()
+                msg: "Unable to match `#tfalse` to a token value.".to_string(),
             })
         );
 
@@ -525,21 +531,21 @@ mod tests {
             start(": "),
             Err(LexError {
                 line: 1,
-                msg: "Unable to match `:` to a token value.".to_string()
+                msg: "Unable to match `:` to a token value.".to_string(),
             })
         );
         assert_eq!(
             start(" :( "),
             Err(LexError {
                 line: 1,
-                msg: "Unable to match `:` to a token value.".to_string()
+                msg: "Unable to match `:` to a token value.".to_string(),
             })
         );
         assert_eq!(
             start(" :)"),
             Err(LexError {
                 line: 1,
-                msg: "Unable to match `:` to a token value.".to_string()
+                msg: "Unable to match `:` to a token value.".to_string(),
             })
         );
 
@@ -548,7 +554,7 @@ mod tests {
             start(" asdf \n. ( )"),
             Err(LexError {
                 line: 2,
-                msg: "Unable to match `.` to a token value.".to_string()
+                msg: "Unable to match `.` to a token value.".to_string(),
             })
         );
 
@@ -557,7 +563,7 @@ mod tests {
             start(" asdf \n.123 ( )"),
             Err(LexError {
                 line: 2,
-                msg: "Unable to match `.123` to a token value.".to_string()
+                msg: "Unable to match `.123` to a token value.".to_string(),
             })
         );
     }
