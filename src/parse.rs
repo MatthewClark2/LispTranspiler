@@ -6,6 +6,41 @@ pub enum ParseTree {
     Branch(Vec<ParseTree>, u32, u32),
 }
 
+impl ParseTree {
+    pub fn to_pretty_string(&self) -> String {
+        self.pretty_string_aux(0)
+    }
+
+    fn pretty_string_aux(&self, indent_level: u32) -> String {
+        let mut output = String::new();
+
+        for _ in 1 .. indent_level {
+            output.push_str("\t");
+        }
+
+        match self {
+            ParseTree::Leaf(t) => {
+                output.push_str(format!("Leaf: {:?}", t).as_str());
+            },
+            ParseTree::Branch(vals, start, stop) => {
+                output.push_str("List: {");
+
+                vals.iter().map(|x| x.pretty_string_aux(indent_level+1)).for_each(|s| {
+                    output.push_str("\n");
+                    for _ in 1 .. indent_level {
+                        output.push_str("\t");
+                    }
+                    output.push_str(&s[..]);
+                });
+
+                output.push_str("\n}");
+            }
+        }
+
+        output
+    }
+}
+
 pub fn parse(tokens: &Vec<Token>) -> Result<Vec<ParseTree>, (u32, String)> {
     let mut statements: Vec<ParseTree> = Vec::new();
     let mut t = &tokens[..];
