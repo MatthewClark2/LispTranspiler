@@ -1,14 +1,14 @@
 use nom::branch::alt;
-use nom::bytes::complete::{tag, take_while1};
 use nom::bytes::complete::take_while;
+use nom::bytes::complete::{tag, take_while1};
 use nom::character::complete::{char, digit0, digit1};
 use nom::combinator::{complete, map, opt, recognize};
+use nom::error::Error;
 use nom::multi::many0;
 use nom::sequence::{delimited, pair, preceded, tuple};
 use nom::IResult;
 use std::fmt::Debug;
 use std::str::FromStr;
-use nom::error::Error;
 
 #[derive(Clone, Debug, PartialEq)]
 pub struct Token {
@@ -78,7 +78,9 @@ pub fn start(input: &str) -> Result<Vec<Token>, LexError> {
         line += lines_read;
 
         // Since whitespace may have been consumed, it's possible that input was exhausted.
-        if s.is_empty() { return Ok(tokens); };
+        if s.is_empty() {
+            return Ok(tokens);
+        };
 
         // Ignore line comments.
         if s.chars().nth(0).unwrap() == ';' {
@@ -95,21 +97,24 @@ pub fn start(input: &str) -> Result<Vec<Token>, LexError> {
             }
         }
 
-        // All leading comments and whitespace have been stripped.
+        // All leading comments and whitespace have been stripped, so we can move to parsers.
 
-        // Basic tokens and parsers.
-
-        // Strings are different, so we handle them differently.
+        // Check below for what's going on here. Essentially, strings can't be quickly taken in
+        // chunks, so we handle them separately.
         let x = if s.chars().nth(0).unwrap() == '"' {
             match string(s) {
-                Err(_) => Err(LexError {line, msg: format!("Error while attempting to read string content")}),
-                Ok((s, v)) => Ok((s, v))
+                Err(_) => Err(LexError {
+                    line,
+                    msg: format!("Error while attempting to read string content"),
+                }),
+                Ok((s, v)) => Ok((s, v)),
             }
         } else {
-
             // There's something left in the stream, so we first try to consume everything up to the
             // next token terminal.
-            let (s, next_token) = take_while::<fn(char) -> bool, &str, Error<&str>>(|x| !is_token_terminal(x))(s).unwrap();
+            let (s, next_token) =
+                take_while::<fn(char) -> bool, &str, Error<&str>>(|x| !is_token_terminal(x))(s)
+                    .unwrap();
 
             // If the next token is empty, that means the next character is a token terminal. Whitespace
             // has already been stripped, so it must be a single character token.
@@ -117,7 +122,7 @@ pub fn start(input: &str) -> Result<Vec<Token>, LexError> {
                 match s.chars().nth(0).unwrap() {
                     '(' => Ok((&s[1..], TokenValue::Open)),
                     ')' => Ok((&s[1..], TokenValue::Close)),
-                    x => Err(LexError { line, msg: format!("Unexpected character `{}`.", x) })  // This should be an illegal state.
+                    _ => panic!("This should theoretically be unreachable."),
                 }
             } else {
                 // Now we try each parser.
@@ -130,15 +135,21 @@ pub fn start(input: &str) -> Result<Vec<Token>, LexError> {
                 parsers.push(string);
                 parsers.push(keyword);
                 parsers.push(symbol);
-                let mut possibilities: Vec<TokenValue> = parsers.iter().map(|f| {
-                    match f(next_token) {
+                let mut possibilities: Vec<TokenValue> = parsers
+                    .iter()
+                    .map(|f| match f(next_token) {
                         Ok(("", v)) => Ok(v),
-                        _ => Err("")
-                    }
-                }).filter(Result::is_ok).map(Result::unwrap).collect();
+                        _ => Err(""),
+                    })
+                    .filter(Result::is_ok)
+                    .map(Result::unwrap)
+                    .collect();
 
                 if possibilities.is_empty() {
-                    Err(LexError { line, msg: format!("Unable to match `{}` to a token value.", next_token) })
+                    Err(LexError {
+                        line,
+                        msg: format!("Unable to match `{}` to a token value.", next_token),
+                    })
                 } else {
                     Ok((s, possibilities.remove(0)))
                 }
@@ -163,7 +174,7 @@ fn is_symbolic_start(ch: char) -> bool {
     vec![
         '*', '$', '+', '-', '_', '!', '?', '/', '%', '&', '^', '~', '<', '>', '=', '@',
     ]
-        .contains(&ch)
+    .contains(&ch)
         || ch.is_alphabetic()
 }
 
@@ -175,9 +186,9 @@ fn signed<T>(
     f: &'static dyn Fn(&str) -> IResult<&str, T>,
     required: bool,
 ) -> Box<dyn Fn(&str) -> IResult<&str, T>>
-    where
-        T: FromStr,
-        <T as FromStr>::Err: Debug,
+where
+    T: FromStr,
+    <T as FromStr>::Err: Debug,
 {
     if required {
         Box::new(move |input| {
@@ -201,7 +212,9 @@ fn whitespace(input: &str) -> IResult<&str, u32> {
     let mut lines_read: u32 = 0;
 
     for c in ws.chars() {
-        if c == '\n' { lines_read += 1; }
+        if c == '\n' {
+            lines_read += 1;
+        }
     }
 
     Ok((rest, lines_read))
@@ -256,18 +269,10 @@ named!(string_content <&str, &str>,
     alt!(escape | is_not!("\"\n\r\\"))
 );
 
-// Basic string escapes not including unicode. This function explicitly does not perform the escape
-//  since the resultant string still needs to be copied into a C program.
 fn escape(input: &str) -> IResult<&str, &str> {
     recognize(pair(
         char('\\'),
-        // `alt` tries each parser in sequence, returning the result of
-        // the first successful match
         alt((
-            // The `value` parser returns a fixed value (the first argument) if its
-            // parser (the second argument) succeeds. In these cases, it looks for
-            // the marker characters (n, r, t, etc) and returns the matching
-            // character (\n, \r, \t, etc).
             tag("a"),
             tag("b"),
             tag("e"),
@@ -507,18 +512,54 @@ mod tests {
     #[test]
     fn failed_lexical_tokens() {
         // Boolean not followed by terminal
-        assert_eq!(start("#tfalse"), Err(LexError { line: 1, msg: "Unable to match `#tfalse` to a token value.".to_string() }));
+        assert_eq!(
+            start("#tfalse"),
+            Err(LexError {
+                line: 1,
+                msg: "Unable to match `#tfalse` to a token value.".to_string()
+            })
+        );
 
         // Colon not followed by keyword
-        assert_eq!(start(": "), Err(LexError { line: 1, msg: "Unable to match `:` to a token value.".to_string() }));
-        assert_eq!(start(" :( "), Err(LexError { line: 1, msg: "Unable to match `:` to a token value.".to_string() }));
-        assert_eq!(start(" :)"), Err(LexError { line: 1, msg: "Unable to match `:` to a token value.".to_string() }));
+        assert_eq!(
+            start(": "),
+            Err(LexError {
+                line: 1,
+                msg: "Unable to match `:` to a token value.".to_string()
+            })
+        );
+        assert_eq!(
+            start(" :( "),
+            Err(LexError {
+                line: 1,
+                msg: "Unable to match `:` to a token value.".to_string()
+            })
+        );
+        assert_eq!(
+            start(" :)"),
+            Err(LexError {
+                line: 1,
+                msg: "Unable to match `:` to a token value.".to_string()
+            })
+        );
 
         // Standalone decimal point
-        assert_eq!(start(" asdf \n. ( )"), Err(LexError { line: 2, msg: "Unable to match `.` to a token value.".to_string() }));
+        assert_eq!(
+            start(" asdf \n. ( )"),
+            Err(LexError {
+                line: 2,
+                msg: "Unable to match `.` to a token value.".to_string()
+            })
+        );
 
         // Floating point number not starting with a digit.
-        assert_eq!(start(" asdf \n.123 ( )"), Err(LexError { line: 2, msg: "Unable to match `.123` to a token value.".to_string() }));
+        assert_eq!(
+            start(" asdf \n.123 ( )"),
+            Err(LexError {
+                line: 2,
+                msg: "Unable to match `.123` to a token value.".to_string()
+            })
+        );
     }
 
     #[test]
