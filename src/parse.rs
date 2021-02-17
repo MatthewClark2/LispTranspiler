@@ -14,30 +14,32 @@ impl ParseTree {
     fn pretty_string_aux(&self, indent_level: u32) -> String {
         let mut output = String::new();
 
-        for _ in 1 .. indent_level {
-            output.push_str("\t");
-        }
-
         match self {
             ParseTree::Leaf(t) => {
-                output.push_str(format!("Leaf: {:?}", t).as_str());
-            },
+                Self::add_with_indent(&mut output, format!("Leaf: {:?}", t).as_str(), indent_level, false);
+            }
             ParseTree::Branch(vals, start, stop) => {
-                output.push_str("List: {");
+                Self::add_with_indent(&mut output, "List: [", indent_level, true);
 
-                vals.iter().map(|x| x.pretty_string_aux(indent_level+1)).for_each(|s| {
-                    output.push_str("\n");
-                    for _ in 1 .. indent_level {
-                        output.push_str("\t");
-                    }
-                    output.push_str(&s[..]);
-                });
+                vals.iter()
+                    .map(|x| x.pretty_string_aux(indent_level + 1))
+                    .for_each(|s| Self::add_with_indent(&mut output, s.as_str(), indent_level + 1, true));
 
-                output.push_str("\n}");
+                Self::add_with_indent(&mut output, "]", indent_level, false);
             }
         }
 
         output
+    }
+
+    fn add_with_indent(output: &mut String, content: &str, indent_level: u32, add_newline: bool) {
+        for _ in 0..indent_level {
+            output.push_str("\t");
+        }
+
+        output.push_str(content);
+
+        if add_newline { output.push('\n'); }
     }
 }
 
