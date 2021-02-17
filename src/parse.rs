@@ -3,7 +3,7 @@ use crate::lex::{Token, TokenValue};
 #[derive(Debug, PartialEq, Clone)]
 pub enum ParseTree {
     Leaf(Token),
-    Branch(Vec<ParseTree>),
+    Branch(Vec<ParseTree>, u32, u32),
 }
 
 pub fn parse(tokens: &Vec<Token>) -> Result<Vec<ParseTree>, (u32, String)> {
@@ -24,19 +24,19 @@ fn statement(tokens: &[Token]) -> Result<(ParseTree, &[Token]), (u32, String)> {
     let rest = &tokens[1..];
 
     match tokens[0].value() {
-        TokenValue::Open => list(rest),
+        TokenValue::Open => list(rest, tokens[0].line()),
         TokenValue::Close => Err((tokens[0].line(), "Unexpected end of list.".to_string())),
         _ => Ok((ParseTree::Leaf(tokens[0].clone()), rest))
     }
 }
 
-fn list(tokens: &[Token]) -> Result<(ParseTree, &[Token]), (u32, String)> {
+fn list(tokens: &[Token], start_line: u32) -> Result<(ParseTree, &[Token]), (u32, String)> {
     let mut vals: Vec<ParseTree> = Vec::new();
     let mut t = &tokens[..];
 
     while !t.is_empty() {
         if t[0].value() == TokenValue::Close {
-            return Ok((ParseTree::Branch(vals), &t[1..]))
+            return Ok((ParseTree::Branch(vals, start_line, t[0].line()), &t[1..]));
         }
 
         let r = statement(t)?;
@@ -70,7 +70,7 @@ mod test {
         let x = parse(&tokens).unwrap();
 
         assert_eq!(x.len(), 1);
-        assert_eq!(x[0], Branch(Vec::new()));
+        assert_eq!(x[0], Branch(Vec::new(), 0, 0));
     }
 
     #[test]
@@ -87,13 +87,13 @@ mod test {
         assert_eq!(x.len(), 1);
 
         match &x[0] {
-            Leaf(_) => assert!(false),
-            Branch(x) => {
+            Branch(x, 0, 0) => {
                 assert_eq!(x.len(), 3);
                 assert_eq!(x[0], Leaf(Token::from(Symbol("+".to_string()))));
                 assert_eq!(x[1], Leaf(Token::from(Int(16))));
                 assert_eq!(x[2], Leaf(Token::from(Int(4))));
             }
+            _ => assert!(false),
         }
     }
 
@@ -115,12 +115,12 @@ mod test {
         assert_eq!(x.len(), 1);
 
         match &x[0] {
-            Leaf(_) => assert!(false),
-            Branch(x) => {
+            Branch(x, 0, 0) => {
                 assert_eq!(x.len(), 2);
-                assert_eq!(x[0], Branch(Vec::new()));
-                assert_eq!(x[1], Branch(vec!(Branch(Vec::new()))));
+                assert_eq!(x[0], Branch(Vec::new(), 0, 0));
+                assert_eq!(x[1], Branch(vec!(Branch(Vec::new(), 0, 0)), 0, 0));
             }
+            _ => assert!(false),
         }
     }
 
@@ -134,31 +134,31 @@ mod test {
         assert_eq!(x[1], Leaf(tokens[1].clone()));
         assert_eq!(x[2], Leaf(tokens[2].clone()));
         match &x[3] {
-            Leaf(_) => panic!(),
-            Branch(x) => {
+            Branch(x, 1, 1) => {
                 assert_eq!(x.len(), 4);
                 assert_eq!(x[0], Leaf(tokens[4].clone()));
                 assert_eq!(x[1], Leaf(tokens[5].clone()));
                 assert_eq!(x[2], Leaf(tokens[6].clone()));
 
                 match &x[3] {
-                    Leaf(_) => panic!(),
-                    Branch(x) => {
+                    Branch(x, 1, 1) => {
                         assert_eq!(x.len(), 3);
 
                         assert_eq!(x[0], Leaf(tokens[8].clone()));
                         assert_eq!(x[1], Leaf(tokens[9].clone()));
                         assert_eq!(x[2], Leaf(tokens[10].clone()));
                     }
+                    _ => panic!(),
                 }
             }
+            _ => panic!(),
         }
 
         match &x[4] {
-            Leaf(_) => panic!(),
-            Branch(x) => {
+            Branch(x, 1, 1) => {
                 assert_eq!(x.len(), 0);
             }
+            _ => panic!(),
         }
     }
 

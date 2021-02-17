@@ -5,6 +5,7 @@ use std::{env, fs};
 
 mod lex;
 mod parse;
+mod ast;
 
 fn main() {
     // foo();
