@@ -4,9 +4,11 @@ extern crate nom;
 use std::{env, fs};
 use std::any::Any;
 use crate::parse::ParseTree;
+use crate::ast::ASTNode;
 
 mod lex;
 mod parse;
+mod ast;
 // mod ast;
 
 fn main() {
@@ -20,18 +22,20 @@ fn main() {
     }
 }
 
-fn run(program: &str) -> () {
+fn run(program: &str) -> Result<Vec<ASTNode>, (u32, String)> {
     // let tokens = lex::start("(format (* 1 2 3))  (format 17i) (format 1.28) (format (+ 6 7 (* 2 7)))").unwrap();
     let tokens = lex::start(program).unwrap();
     let parse_tree = parse::parse(&tokens).unwrap();
 
     let mut output = String::new();
 
-    for tree in parse_tree {
+    for tree in parse_tree.as_slice() {
         output.push_str(tree.to_pretty_string().as_str());
         output.push('\n');
         output.push('\n');
     }
 
-    println!("{}", output)
+    println!("{}", output);
+
+    ast::construct_ast(&parse_tree)
 }

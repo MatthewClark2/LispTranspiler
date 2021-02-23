@@ -1,9 +1,9 @@
-use crate::lex::Token;
-use std::collections::{HashSet, HashMap};
-use crate::parse::ParseTree;
-use crate::ast::Value::*;
 use crate::ast::Statement::*;
+use crate::ast::Value::*;
+use crate::lex::Token;
 use crate::lex::TokenValue::Symbol;
+use crate::parse::ParseTree;
+use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 
 #[derive(Clone)]
@@ -30,39 +30,112 @@ impl TryFrom<&ParseTree> for ASTNode {
             ParseTree::Leaf(t) => Ok(Self::from(t.clone())),
             ParseTree::Branch(elems, start, _stop) => {
                 if elems.len() == 0 {
-                    Err((start, String::from("Empty lists are unsupported as syntax elements.")))
+                    return Err((
+                        *start,
+                        String::from("Empty lists are unsupported as syntax elements."),
+                    ));
                 }
 
-                match &elems[0] {
-                    ParseTree::Leaf(Token { line, value: Symbol(s) }) if &s[..] == "if" => {
+                return match &elems[0] {
+                    ParseTree::Leaf(Token {
+                        line,
+                        value: Symbol(s),
+                    }) if &s[..] == "if" => {
                         if elems.len() != 4 {
-                            Err((line, String::from(format!("Expected exactly 3 arguments in `if` special form. Found {}.", elems.len()))))
+                            return Err((
+                                *line,
+                                String::from(format!(
+                                    "Expected exactly 3 arguments in `if` special form. Found {}.",
+                                    elems.len()
+                                )),
+                            ));
+                        }
+
+                        let cond = Self::try_from(&elems[1])?;
+                        let if_true = Self::try_from(&elems[2])?;
+                        let if_false = Self::try_from(&elems[3])?;
+
+                        match (cond, if_true, if_false) {
+                            (ASTNode::Value(a), ASTNode::Value(b), ASTNode::Value(c)) => Ok(ASTNode::Value(Value::Condition(Box::new(a.clone()), Box::new(b.clone()), Box::new(c.clone())))),
+                            _ => Err((*line, String::from("Expected values for condition, true, and false branches of condition.")))
                         }
                     }
-                    ParseTree::Leaf(Token { line, value: Symbol(s) }) if &s[..] == "define" => {
+                    ParseTree::Leaf(Token {
+                        line,
+                        value: Symbol(s),
+                    }) if &s[..] == "define" => {
                         if elems.len() != 3 {
-                            Err((line, String::from(format!("Expected exactly 2 arguments in `define` special form. Found {}.", elems.len()))))
+                            return Err((*line, String::from(format!("Expected exactly 2 arguments in `define` special form. Found {}.", elems.len()))));
+                        }
+
+                        let defined = Self::try_from(&elems[1])?;
+                        let value = Self::try_from(&elems[2])?;
+
+                        match (defined, value) {
+                            (
+                                ASTNode::Value(Literal(Token {
+                                    value: Symbol(s), ..
+                                })),
+                                ASTNode::Value(v),
+                            ) => Ok(ASTNode::Statement(Definition(s.clone(), v.clone()))),
+                            (
+                                ASTNode::Value(Literal(Token {
+                                    value: Symbol(s),
+                                    line,
+                                })),
+                                _,
+                            ) => Err((line, String::from("Can only assign a symbol to a value."))),
+                            (_, ASTNode::Value(v)) => {
+                                Err((*line, String::from("Can only assign a value to a symbol.")))
+                            }
+                            _ => Err((*line, String::from("Invalid definition."))),
                         }
                     }
-                    ParseTree::Leaf(t) => {
-                        match &t {
-                            Token { value: Symbol(s), .. } => {
-                                let mut args = Vec::new();
+                    ParseTree::Leaf(t) => match &t {
+                        Token {
+                            value: Symbol(s),
+                            line,
+                        } => {
+                            let mut args = Vec::new();
 
-                                for subtree in &elems[1..] {
-                                    match Self::try_from(subtree). {
-                                        Ok(ASTNode::Value(v)) => args.push(v),
-
+                            for subtree in &elems[1..] {
+                                match Self::try_from(subtree)? {
+                                    (ASTNode::Value(v)) => args.push(v),
+                                    _ => {
+                                        return Err((
+                                            *line,
+                                            String::from("All arguments in call should be values."),
+                                        ))
                                     }
                                 }
-                                let args: Vec<Result<Self, Self::Error>> = &elems[1..].iter().map(Self::try_from::<ParseTree>).collect();
-                                Ok(ASTNode::Value(Call(Box::new(Literal(t.clone())), args)))
-                            },
-                            _ => Err(String::from("Symbols are the only literal value that may be invoked.")),
+                            }
+                            let args: Vec<Result<Self, Self::Error>> =
+                                (&elems[1..]).iter().map(Self::try_from).collect();
+
+                            let mut values = Vec::new();
+                            for arg in args {
+                                match arg {
+                                        Ok(ASTNode::Value(v)) => (values.push(v.clone())),
+                                        Ok(_) => return Err((*line, stringify!("Expected a value to be passed as an argument. Found: {}.", &elems[0]).to_string())),
+                                        _ => return arg,
+                                    }
+                            }
+                            Ok(ASTNode::Value(Call(Box::new(Literal(t.clone())), values)))
                         }
+                        _ => Err((
+                            t.line(),
+                            String::from("Symbols are the only literal value that may be invoked."),
+                        )),
+                    },
+                    ParseTree::Branch(elems, start, _stop) => {
+                        // TODO(matthew-c21): Later, it should be possible to invoke lambda special
+                        //  forms as well as functions that may return functions.
+                        Err((
+                            *start,
+                            String::from("Compound forms cannot be used as function calls."),
+                        ))
                     }
-                    ParseTree::Branch(elems, start, _stop) => {}
-                }
+                };
             }
         }
     }
@@ -83,7 +156,8 @@ pub enum Value {
 #[derive(Clone)]
 pub enum Statement {
     // name, value, scope, is_redefinition
-    Definition(String, Value, Scope, bool),
+    // Definition(String, Value, Scope, bool),
+    Definition(String, Value),
 }
 
 pub trait ASTVisitor<T> {
@@ -112,6 +186,57 @@ pub enum Scope {
 
     /// Function parameters.
     Function(String),
+}
+
+#[cfg(test)]
+mod tests {
+    use crate::ast::*;
+    use crate::lex::start;
+    use crate::parse::parse;
+
+    fn force_from(input: &str) -> Vec<ASTNode> {
+        parse(&start(input).unwrap())
+            .unwrap()
+            .iter()
+            .map(ASTNode::try_from)
+            .map(Result::unwrap)
+            .collect()
+    }
+
+    #[test]
+    fn from_literals() {
+        let ast = force_from("hello");
+        assert_eq!(1, ast.len());
+
+        if let ASTNode::Value(Literal(t)) = &ast[0] {
+            assert_eq!(Symbol(String::from("hello")), t.value())
+        }
+    }
+
+    #[test]
+    fn from_define() {}
+
+    #[test]
+    fn from_malformed_defines() {}
+
+    #[test]
+    fn from_condition() {}
+
+    #[test]
+    fn from_malformed_condition() {}
+
+    #[test]
+    // TODO(matthew-c21): After adding all the relevant listeners, replace this with something else.
+    fn basic_comprehensive() {}
+
+    /*
+    Stil need:
+
+    symbol table tracing and relevant errors
+    validation of called functions
+    function call unfurling
+    conditional unfurling
+     */
 }
 
 /* AST Construction

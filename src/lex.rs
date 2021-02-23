@@ -13,8 +13,9 @@ use std::str::FromStr;
 #[derive(Clone, Debug, PartialEq)]
 pub struct Token {
     // This technically limits file sizes, but the maximum size is tremendous.
-    line: u32,
-    value: TokenValue,
+    // TODO(matthew-c21): Mark these private later.
+    pub line: u32,
+    pub value: TokenValue,
 }
 
 impl Token {
