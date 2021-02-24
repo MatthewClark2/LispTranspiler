@@ -6,14 +6,20 @@ use crate::parse::ParseTree;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum ASTNode {
     Value(Value),
     Statement(Statement),
 }
 
-pub fn construct_ast(_parsed: &Vec<ParseTree>) -> Result<Vec<ASTNode>, (u32, String)> {
-    unimplemented!()
+pub fn construct_ast(parse_tree: &Vec<ParseTree>) -> Result<Vec<ASTNode>, (u32, String)> {
+    let mut ast = Vec::new();
+
+    for tree in parse_tree {
+        ast.push(ASTNode::try_from(tree)?);
+    }
+
+    Ok(ast)
 }
 
 impl From<Token> for ASTNode {
@@ -65,7 +71,7 @@ impl TryFrom<&ParseTree> for ASTNode {
                         value: Symbol(s),
                     }) if &s[..] == "define" => {
                         if elems.len() != 3 {
-                            return Err((*line, String::from(format!("Expected exactly 2 arguments in `define` special form. Found {}.", elems.len()))));
+                            return Err((*line, String::from(format!("Expected exactly 2 arguments in `define` special form. Found {}.", elems.len() - 1))));
                         }
 
                         let defined = Self::try_from(&elems[1])?;
@@ -100,7 +106,7 @@ impl TryFrom<&ParseTree> for ASTNode {
 
                             for subtree in &elems[1..] {
                                 match Self::try_from(subtree)? {
-                                    (ASTNode::Value(v)) => args.push(v),
+                                    ASTNode::Value(v) => args.push(v),
                                     _ => {
                                         return Err((
                                             *line,
@@ -141,7 +147,7 @@ impl TryFrom<&ParseTree> for ASTNode {
     }
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Value {
     // Should only hold valued tokens. Anything else should be removed during the parsing step.
     Literal(Token),
@@ -153,7 +159,7 @@ pub enum Value {
     Condition(Box<Value>, Box<Value>, Box<Value>),
 }
 
-#[derive(Clone)]
+#[derive(Clone, Debug)]
 pub enum Statement {
     // name, value, scope, is_redefinition
     // Definition(String, Value, Scope, bool),
@@ -191,8 +197,9 @@ pub enum Scope {
 #[cfg(test)]
 mod tests {
     use crate::ast::*;
-    use crate::lex::start;
+    use crate::lex::{start, TokenValue};
     use crate::parse::parse;
+    use crate::lex::TokenValue::*;
 
     fn force_from(input: &str) -> Vec<ASTNode> {
         parse(&start(input).unwrap())
@@ -203,24 +210,130 @@ mod tests {
             .collect()
     }
 
+    fn from_line(input: &str) -> Result<ASTNode, (u32, String)> {
+        let mut ast: Vec<Result<ASTNode, (u32, String)>> = parse(&start(input).unwrap())
+            .unwrap()
+            .iter()
+            .map(ASTNode::try_from)
+            .collect();
+
+        assert_eq!(1, ast.len());
+
+        ast.remove(0)
+    }
+
     #[test]
-    fn from_literals() {
+    fn from_literal() {
         let ast = force_from("hello");
         assert_eq!(1, ast.len());
 
         if let ASTNode::Value(Literal(t)) = &ast[0] {
             assert_eq!(Symbol(String::from("hello")), t.value())
+        } else {
+            panic!("Failed AST generation")
         }
     }
 
     #[test]
-    fn from_define() {}
+    fn from_define() {
+        let ast = force_from("(define foobar \"foo bar\")");
+        assert_eq!(1, ast.len());
+
+        if let ASTNode::Statement(Definition(name, value)) = &ast[0] {
+            assert_eq!("foobar", name.as_str());
+
+            match value {
+                Literal(t) => assert_eq!(TokenValue::Str("foo bar".to_string()), t.value()),
+                _ => panic!()
+            }
+        } else {
+            panic!()
+        }
+    }
 
     #[test]
-    fn from_malformed_defines() {}
+    fn define_non_symbol() {
+        let result: Result<ASTNode, (u32, String)> = from_line("(define 123 456)");
+
+        assert!(result.is_err());
+
+        if let Err((_, msg)) = result {
+            assert_eq!("Can only assign a value to a symbol.", msg.as_str())
+        }
+    }
 
     #[test]
-    fn from_condition() {}
+    fn define_non_value() {
+        let result: Result<ASTNode, (u32, String)> = from_line("(define a (define b 1))");
+
+        assert!(result.is_err());
+
+        if let Err((_, msg)) = result {
+            assert_eq!("Can only assign a symbol to a value.", msg.as_str())
+        }
+    }
+
+    #[test]
+    fn fully_malformed_define() {
+        let result: Result<ASTNode, (u32, String)> = from_line("(define 8 (define c 1))");
+
+        assert!(result.is_err());
+
+        if let Err((_, msg)) = result {
+            assert_eq!("Invalid definition.", msg.as_str())
+        }
+    }
+
+    #[test]
+    fn wrong_number_define() {
+        let result: Result<ASTNode, (u32, String)> = from_line("(define a 1 2)");
+
+        assert!(result.is_err());
+
+        if let Err((_, msg)) = result {
+            assert_eq!("Expected exactly 2 arguments in `define` special form. Found 3.", msg.as_str())
+        }
+
+        let result: Result<ASTNode, (u32, String)> = from_line("(define a)");
+
+        assert!(result.is_err());
+
+        if let Err((_, msg)) = result {
+            assert_eq!("Expected exactly 2 arguments in `define` special form. Found 1.", msg.as_str())
+        }
+
+        let result: Result<ASTNode, (u32, String)> = from_line("(define)");
+
+        assert!(result.is_err());
+
+        if let Err((_, msg)) = result {
+            assert_eq!("Expected exactly 2 arguments in `define` special form. Found 0.", msg.as_str())
+        }
+    }
+
+    #[test]
+    fn wrong_number_condition() {}
+
+    #[test]
+    fn conditional_non_values() {}
+
+    #[test]
+    fn from_condition() {
+        let ast = force_from("(if #t \"true\" \"false\")");
+        assert_eq!(1, ast.len());
+
+        if let ASTNode::Value(Condition(a, b, c)) = &ast[0] {
+            if let (Literal(cond), Literal(if_true), Literal(if_false)) = (a.as_ref(), b.as_ref(), c.as_ref()) {
+                assert_eq!(True, cond.value());
+                assert_eq!(Str("true".to_string()), if_true.value());
+                assert_eq!(Str("false".to_string()), if_false.value());
+            } else {
+                panic!()
+            }
+        } else {
+            panic!()
+        }
+    }
 
     #[test]
     fn from_malformed_condition() {}
@@ -230,7 +343,7 @@ mod tests {
     fn basic_comprehensive() {}
 
     /*
-    Stil need:
+    Still need:
 
     symbol table tracing and relevant errors
     validation of called functions

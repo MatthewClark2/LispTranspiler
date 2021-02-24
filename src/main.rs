@@ -18,7 +18,7 @@ fn main() {
 
     for program in &programs[1..] {
         let contents = fs::read_to_string(program).expect("Something went wrong reading the file");
-        run(contents.as_str());
+        println!("{:#?}", run(contents.as_str()));
     }
 }
 
