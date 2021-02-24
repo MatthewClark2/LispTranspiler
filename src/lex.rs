@@ -175,7 +175,7 @@ fn is_symbolic_start(ch: char) -> bool {
     vec![
         '*', '$', '+', '-', '_', '!', '?', '/', '%', '&', '^', '~', '<', '>', '=', '@',
     ]
-        .contains(&ch)
+    .contains(&ch)
         || ch.is_alphabetic()
 }
 
@@ -187,9 +187,9 @@ fn signed<T>(
     f: &'static dyn Fn(&str) -> IResult<&str, T>,
     required: bool,
 ) -> Box<dyn Fn(&str) -> IResult<&str, T>>
-    where
-        T: FromStr,
-        <T as FromStr>::Err: Debug,
+where
+    T: FromStr,
+    <T as FromStr>::Err: Debug,
 {
     if required {
         Box::new(move |input| {
@@ -325,7 +325,7 @@ fn complex(input: &str) -> IResult<&str, TokenValue> {
             alt((im, value(1.0, tag("+")), value(-1.0, tag("-")))),
             tag("i"),
         )),
-        tuple((|s| { Ok((s, 0.0)) }, signed(&floating, false), tag("i"))),
+        tuple((|s| Ok((s, 0.0)), signed(&floating, false), tag("i"))),
     ))(input)?;
 
     let x = r.1;

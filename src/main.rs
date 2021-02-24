@@ -1,14 +1,14 @@
 #[macro_use]
 extern crate nom;
 
-use std::{env, fs};
-use std::any::Any;
-use crate::parse::ParseTree;
 use crate::ast::ASTNode;
+use crate::parse::ParseTree;
+use std::any::Any;
+use std::{env, fs};
 
+mod ast;
 mod lex;
 mod parse;
-mod ast;
 // mod ast;
 
 fn main() {

@@ -16,14 +16,21 @@ impl ParseTree {
 
         match self {
             ParseTree::Leaf(t) => {
-                Self::add_with_indent(&mut output, format!("Leaf: {:?}", t).as_str(), indent_level, false);
+                Self::add_with_indent(
+                    &mut output,
+                    format!("Leaf: {:?}", t).as_str(),
+                    indent_level,
+                    false,
+                );
             }
             ParseTree::Branch(vals, start, stop) => {
                 Self::add_with_indent(&mut output, "List: [", indent_level, true);
 
                 vals.iter()
                     .map(|x| x.pretty_string_aux(indent_level + 1))
-                    .for_each(|s| Self::add_with_indent(&mut output, s.as_str(), indent_level + 1, true));
+                    .for_each(|s| {
+                        Self::add_with_indent(&mut output, s.as_str(), indent_level + 1, true)
+                    });
 
                 Self::add_with_indent(&mut output, "]", indent_level, false);
             }
@@ -39,7 +46,9 @@ impl ParseTree {
 
         output.push_str(content);
 
-        if add_newline { output.push('\n'); }
+        if add_newline {
+            output.push('\n');
+        }
     }
 }
 
@@ -63,7 +72,7 @@ fn statement(tokens: &[Token]) -> Result<(ParseTree, &[Token]), (u32, String)> {
     match tokens[0].value() {
         TokenValue::Open => list(rest, tokens[0].line()),
         TokenValue::Close => Err((tokens[0].line(), "Unexpected end of list.".to_string())),
-        _ => Ok((ParseTree::Leaf(tokens[0].clone()), rest))
+        _ => Ok((ParseTree::Leaf(tokens[0].clone()), rest)),
     }
 }
 
@@ -86,13 +95,13 @@ fn list(tokens: &[Token], start_line: u32) -> Result<(ParseTree, &[Token]), (u32
 
 #[cfg(test)]
 mod test {
+    use crate::lex::{start, Token, TokenValue::*};
     use crate::parse::parse;
-    use crate::lex::{Token, TokenValue::*, start};
-    use crate::parse::ParseTree::{Leaf, Branch};
+    use crate::parse::ParseTree::{Branch, Leaf};
 
     #[test]
     fn single_terminal() {
-        let tokens = vec!(Token::from(Int(16)));
+        let tokens = vec![Token::from(Int(16))];
 
         let x = parse(&tokens).unwrap();
 
@@ -102,7 +111,7 @@ mod test {
 
     #[test]
     fn empty_list() {
-        let tokens = vec!(Token::from(Open), Token::from(Close));
+        let tokens = vec![Token::from(Open), Token::from(Close)];
 
         let x = parse(&tokens).unwrap();
 
@@ -112,12 +121,13 @@ mod test {
 
     #[test]
     fn list_of_terminals() {
-        let tokens = vec!(
+        let tokens = vec![
             Token::from(Open),
             Token::from(Symbol("+".to_string())),
             Token::from(Int(16)),
             Token::from(Int(4)),
-            Token::from(Close));
+            Token::from(Close),
+        ];
 
         let x = parse(&tokens).unwrap();
 
@@ -136,7 +146,7 @@ mod test {
 
     #[test]
     fn nested_list() {
-        let tokens = vec!(
+        let tokens = vec![
             Token::from(Open),
             Token::from(Open),
             Token::from(Close),
@@ -145,7 +155,7 @@ mod test {
             Token::from(Close),
             Token::from(Close),
             Token::from(Close),
-        );
+        ];
 
         let x = parse(&tokens).unwrap();
 
@@ -202,10 +212,11 @@ mod test {
     #[test]
     #[should_panic]
     fn fails_unbalanced_parens() {
-        parse(&vec!(
+        parse(&vec![
             Token::from(Open),
             Token::from(Open),
             Token::from(Close),
-        )).unwrap();
+        ])
+        .unwrap();
     }
 }

@@ -197,9 +197,9 @@ pub enum Scope {
 #[cfg(test)]
 mod tests {
     use crate::ast::*;
+    use crate::lex::TokenValue::*;
     use crate::lex::{start, TokenValue};
     use crate::parse::parse;
-    use crate::lex::TokenValue::*;
 
     fn force_from(input: &str) -> Vec<ASTNode> {
         parse(&start(input).unwrap())
@@ -244,7 +244,7 @@ mod tests {
 
             match value {
                 Literal(t) => assert_eq!(TokenValue::Str("foo bar".to_string()), t.value()),
-                _ => panic!()
+                _ => panic!(),
             }
         } else {
             panic!()
@@ -291,7 +291,10 @@ mod tests {
         assert!(result.is_err());
 
         if let Err((_, msg)) = result {
-            assert_eq!("Expected exactly 2 arguments in `define` special form. Found 3.", msg.as_str())
+            assert_eq!(
+                "Expected exactly 2 arguments in `define` special form. Found 3.",
+                msg.as_str()
+            )
         }
 
         let result: Result<ASTNode, (u32, String)> = from_line("(define a)");
@@ -299,7 +302,10 @@ mod tests {
         assert!(result.is_err());
 
         if let Err((_, msg)) = result {
-            assert_eq!("Expected exactly 2 arguments in `define` special form. Found 1.", msg.as_str())
+            assert_eq!(
+                "Expected exactly 2 arguments in `define` special form. Found 1.",
+                msg.as_str()
+            )
         }
 
         let result: Result<ASTNode, (u32, String)> = from_line("(define)");
@@ -307,7 +313,10 @@ mod tests {
         assert!(result.is_err());
 
         if let Err((_, msg)) = result {
-            assert_eq!("Expected exactly 2 arguments in `define` special form. Found 0.", msg.as_str())
+            assert_eq!(
+                "Expected exactly 2 arguments in `define` special form. Found 0.",
+                msg.as_str()
+            )
         }
     }
 
@@ -323,7 +332,9 @@ mod tests {
         assert_eq!(1, ast.len());
 
         if let ASTNode::Value(Condition(a, b, c)) = &ast[0] {
-            if let (Literal(cond), Literal(if_true), Literal(if_false)) = (a.as_ref(), b.as_ref(), c.as_ref()) {
+            if let (Literal(cond), Literal(if_true), Literal(if_false)) =
+                (a.as_ref(), b.as_ref(), c.as_ref())
+            {
                 assert_eq!(True, cond.value());
                 assert_eq!(Str("true".to_string()), if_true.value());
                 assert_eq!(Str("false".to_string()), if_false.value());
