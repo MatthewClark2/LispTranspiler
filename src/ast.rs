@@ -44,9 +44,9 @@ impl TryFrom<&ParseTree> for ASTNode {
 
                 return match &elems[0] {
                     ParseTree::Leaf(Token {
-                        line,
-                        value: Symbol(s),
-                    }) if &s[..] == "if" => {
+                                        line,
+                                        value: Symbol(s),
+                                    }) if &s[..] == "if" => {
                         if elems.len() != 4 {
                             return Err((
                                 *line,
@@ -67,9 +67,9 @@ impl TryFrom<&ParseTree> for ASTNode {
                         }
                     }
                     ParseTree::Leaf(Token {
-                        line,
-                        value: Symbol(s),
-                    }) if &s[..] == "define" => {
+                                        line,
+                                        value: Symbol(s),
+                                    }) if &s[..] == "define" => {
                         if elems.len() != 3 {
                             return Err((*line, String::from(format!("Expected exactly 2 arguments in `define` special form. Found {}.", elems.len() - 1))));
                         }
@@ -80,15 +80,15 @@ impl TryFrom<&ParseTree> for ASTNode {
                         match (defined, value) {
                             (
                                 ASTNode::Value(Literal(Token {
-                                    value: Symbol(s), ..
-                                })),
+                                                           value: Symbol(s), ..
+                                                       })),
                                 ASTNode::Value(v),
                             ) => Ok(ASTNode::Statement(Definition(s.clone(), v.clone()))),
                             (
                                 ASTNode::Value(Literal(Token {
-                                    value: Symbol(s),
-                                    line,
-                                })),
+                                                           value: Symbol(s),
+                                                           line,
+                                                       })),
                                 _,
                             ) => Err((line, String::from("Can only assign a symbol to a value."))),
                             (_, ASTNode::Value(v)) => {
@@ -111,7 +111,7 @@ impl TryFrom<&ParseTree> for ASTNode {
                                         return Err((
                                             *line,
                                             String::from("All arguments in call should be values."),
-                                        ))
+                                        ));
                                     }
                                 }
                             }
@@ -121,10 +121,10 @@ impl TryFrom<&ParseTree> for ASTNode {
                             let mut values = Vec::new();
                             for arg in args {
                                 match arg {
-                                        Ok(ASTNode::Value(v)) => (values.push(v.clone())),
-                                        Ok(_) => return Err((*line, stringify!("Expected a value to be passed as an argument. Found: {}.", &elems[0]).to_string())),
-                                        _ => return arg,
-                                    }
+                                    Ok(ASTNode::Value(v)) => (values.push(v.clone())),
+                                    Ok(_) => return Err((*line, stringify!("Expected a value to be passed as an argument. Found: {}.", &elems[0]).to_string())),
+                                    _ => return arg,
+                                }
                             }
                             Ok(ASTNode::Value(Call(Box::new(Literal(t.clone())), values)))
                         }
@@ -164,16 +164,143 @@ pub enum Statement {
     // name, value, scope, is_redefinition
     // Definition(String, Value, Scope, bool),
     Definition(String, Value),
+    Redefinition(String, Value),
+    Declaration(String),
+    ArgumentVector(Vec<Value>),
 }
 
 pub trait ASTVisitor<T> {
-    fn visit(ast: &ASTNode) -> T;
+    fn visit(&self, ast: &ASTNode, sym_table: &mut SymbolTable) -> T {
+        self.try_visit(ast, sym_table).unwrap()
+    }
+
+    fn try_visit(&self, ast: &ASTNode, sym_table: &mut SymbolTable) -> Result<T, (u32, String)>;
+}
+
+#[derive(Copy, Clone)]
+struct Gensym {
+    counter: u64,
+}
+
+impl Gensym {
+    fn new() -> Self {
+        Gensym { counter: 0 }
+    }
+
+    fn gen(&mut self, symbol: &str, prefix: Option<&str>) -> String {
+        self.counter += 1;
+        let s = Self::convert(symbol);
+        let prefix = if prefix.is_none() { "" } else { stringify!("_{}", prefix.unwrap()) };
+
+        stringify!("gensym{}{}_{}", self.counter, prefix).to_string()
+    }
+
+    /// Transform a non-C compliant symbol into a C compliant one.
+    fn convert(name: &str) -> String {
+        let mut output = String::new();
+
+        if name.chars().nth(0).unwrap().is_digit(10) {
+            output.push('_');
+        }
+
+        for c in name.chars() {
+            output.push_str(match c {
+                '*' => "_times_",
+                '$' => "_dollar_",
+                '+' => "_plus_",
+                '-' => "_minus_",
+                '!' => "_excl_",
+                '?' => "_question_",
+                '/' => "_div_",
+                '%' => "_mod_",
+                '&' => "_amp_",
+                '^' => "_caret_",
+                '~' => "_tilde_",
+                '<' => "_less_",
+                '>' => "_great_",
+                '=' => "_equal_",
+                '@' => "_at_",
+                _ => stringify!("{}", c),
+            })
+        }
+
+        output
+    }
+}
+
+struct FunctionUnfurl {}
+
+impl ASTVisitor<Vec<ASTNode>> for FunctionUnfurl {
+    fn try_visit(
+        &self,
+        ast: &ASTNode,
+        sym_table: &mut SymbolTable,
+    ) -> Result<Vec<ASTNode>, (u32, String)> {
+        let mut mapping: Vec<Value> = Vec::new();
+        let mut result = Vec::new();
+
+        match ast {
+            ASTNode::Value(Call(_, args)) => {
+                for arg in args {
+                    match arg {
+                        Call(_, args) => {
+                            let subexpansion =
+                                self.try_visit(&ASTNode::Value(arg.clone()), sym_table)?;
+                            assert!(subexpansion.len() > 0);
+
+                            // All the preliminary statements are definitions.
+                            for statement in &subexpansion[0..subexpansion.len() - 1] {
+                                result.push(statement.clone())
+                            }
+
+                            // Create a new definition, then add it to the end of the list.
+                            let s = sym_table.generate("function_unwrap", Scope::Global);
+
+                            // This does lose information, but the code should be syntactically
+                            //  correct at this stage, and the information isn't kept for runtime
+                            //  debugging.
+                            mapping.push(Value::Literal(Token::from(Symbol(s.clone()))));
+                            let c = subexpansion.last().unwrap();
+                            if let ASTNode::Value(v) = c {
+                                result.push(ASTNode::Statement(Definition(s, v.clone())))
+                            }
+                        }
+                        _ => mapping.push(arg.clone()), // It isn't a function call, so we don't deal with it here.
+                    }
+                }
+            }
+            _ => return Ok(vec![ast.clone()]),
+        }
+
+        // Finally, create a new function call based on the unrolled variant. The condition is
+        //  redundant, but it's cleaner than trying to get the information earlier.
+        if let ASTNode::Value(Call(callee, _)) = ast {
+            result.push(ASTNode::Value(Call(callee.clone(), mapping)))
+        }
+
+        Ok(result)
+    }
+}
+
+impl FunctionUnfurl {
+    fn new() -> Self { Self {} }
 }
 
 #[derive(Clone)]
 struct SymbolTable {
     natives: HashSet<String>,
-    defs: HashMap<String, SymbolTableEntry>,
+    defs: HashMap<String, Vec<SymbolTableEntry>>,
+    gensym: Gensym,
+}
+
+impl SymbolTable {
+    fn generate(&mut self, base_name: &str, _scope: Scope) -> String {
+        self.gensym.gen(base_name, None)
+    }
+
+    fn dummy() -> Self {
+        Self { natives: HashSet::new(), defs: HashMap::new(), gensym: Gensym::new() }
+    }
 }
 
 #[derive(Clone)]
@@ -195,13 +322,12 @@ pub enum Scope {
 }
 
 #[cfg(test)]
-mod tests {
+mod test_utils {
     use crate::ast::*;
-    use crate::lex::TokenValue::*;
-    use crate::lex::{start, TokenValue};
+    use crate::lex::start;
     use crate::parse::parse;
 
-    fn force_from(input: &str) -> Vec<ASTNode> {
+    pub fn force_from(input: &str) -> Vec<ASTNode> {
         parse(&start(input).unwrap())
             .unwrap()
             .iter()
@@ -210,7 +336,7 @@ mod tests {
             .collect()
     }
 
-    fn from_line(input: &str) -> Result<ASTNode, (u32, String)> {
+    pub fn from_line(input: &str) -> Result<ASTNode, (u32, String)> {
         let mut ast: Vec<Result<ASTNode, (u32, String)>> = parse(&start(input).unwrap())
             .unwrap()
             .iter()
@@ -221,6 +347,49 @@ mod tests {
 
         ast.remove(0)
     }
+}
+
+#[cfg(test)]
+mod visitor_tests {
+    use crate::ast::test_utils::force_from;
+    use crate::ast::*;
+    use crate::ast::*;
+    use crate::lex::TokenValue::*;
+    use crate::lex::{start, TokenValue};
+    use crate::parse::parse;
+
+    #[test]
+    fn basic_call_unroll() {
+        let ast = force_from("(format \"hello\" (+ 1 1))");
+        let ast = FunctionUnfurl::new().try_visit(&ast[0], &mut SymbolTable::dummy()).unwrap();
+
+        assert_eq!(ast.len(), 2);
+
+        if let ASTNode::Statement(Definition(_name, value)) = &ast[0] {
+            if let Call(_plus, args) = value {
+                for arg in args {
+                    if let Literal(t) = arg {
+                        assert_eq!(t.value(), Int(1))
+                    } else {
+                        panic!()
+                    }
+                }
+            } else {
+                panic!()
+            }
+        } else {
+            panic!()
+        }
+    }
+}
+
+#[cfg(test)]
+mod ast_tests {
+    use crate::ast::test_utils::*;
+    use crate::ast::*;
+    use crate::lex::TokenValue::*;
+    use crate::lex::{start, TokenValue};
+    use crate::parse::parse;
 
     #[test]
     fn from_literal() {
@@ -333,7 +502,7 @@ mod tests {
 
         if let ASTNode::Value(Condition(a, b, c)) = &ast[0] {
             if let (Literal(cond), Literal(if_true), Literal(if_false)) =
-                (a.as_ref(), b.as_ref(), c.as_ref())
+            (a.as_ref(), b.as_ref(), c.as_ref())
             {
                 assert_eq!(True, cond.value());
                 assert_eq!(Str("true".to_string()), if_true.value());
