@@ -1,9 +1,8 @@
 #[macro_use]
 extern crate nom;
 
-use crate::ast::ASTNode;
+use crate::ast::*;
 use crate::parse::ParseTree;
-use std::any::Any;
 use std::{env, fs};
 
 mod ast;
@@ -37,5 +36,20 @@ fn run(program: &str) -> Result<Vec<ASTNode>, (u32, String)> {
 
     println!("{}", output);
 
-    ast::construct_ast(&parse_tree)
+    let cnde = ConditionUnroll;
+    let fne = FunctionUnfurl;
+    let mut sym_table = SymbolTable::dummy();
+    let ast = ast::construct_ast(&parse_tree)?;
+
+    let mut output = Vec::new();
+
+    for line in ast {
+        let first_expansion = cnde.try_visit(&line, &mut sym_table)?;
+
+        for line in first_expansion {
+            output.append(&mut fne.try_visit(&line, &mut sym_table)?);
+        }
+    }
+
+    Ok(output)
 }

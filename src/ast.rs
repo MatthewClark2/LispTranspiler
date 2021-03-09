@@ -137,7 +137,7 @@ impl TryFrom<&ParseTree> for ASTNode {
                             for arg in args {
                                 match arg {
                                     Ok(ASTNode::Value(v)) => (values.push(v.clone())),
-                                    Ok(_) => return Err((*line, stringify!("Expected a value to be passed as an argument. Found: {}.", &elems[0]).to_string())),
+                                    Ok(_) => return Err((*line, format!("Expected a value to be passed as an argument. Found: {:?}.", &elems[0]).to_string())),
                                     _ => return arg,
                                 }
                             }
@@ -205,12 +205,12 @@ impl Gensym {
         self.counter += 1;
         let s = Self::convert(symbol);
         let prefix = if prefix.is_none() {
-            ""
+            String::from("")
         } else {
-            stringify!("_{}", prefix.unwrap())
+            format!("_{}", prefix.unwrap()).as_str().to_owned()
         };
 
-        stringify!("gensym{}{}_{}", self.counter, prefix).to_string()
+        format!("gensym{}{}_{}", self.counter, prefix, symbol).to_string()
     }
 
     /// Transform a non-C compliant symbol into a C compliant one.
@@ -238,7 +238,7 @@ impl Gensym {
                 '>' => "_great_",
                 '=' => "_equal_",
                 '@' => "_at_",
-                _ => stringify!("{}", c),
+                _ => stringify!(c),
             })
         }
 
@@ -246,7 +246,7 @@ impl Gensym {
     }
 }
 
-struct FunctionUnfurl;
+pub struct FunctionUnfurl;
 
 impl ASTVisitor<Vec<ASTNode>> for FunctionUnfurl {
     fn try_visit(
@@ -306,7 +306,7 @@ impl FunctionUnfurl {
     }
 }
 
-struct ConditionUnroll;
+pub struct ConditionUnroll;
 
 impl ConditionUnroll {
     fn new() -> Self {
@@ -412,7 +412,7 @@ impl ASTVisitor<Vec<ASTNode>> for ConditionUnroll {
 }
 
 #[derive(Clone)]
-struct SymbolTable {
+pub struct SymbolTable {
     natives: HashSet<String>,
     defs: HashMap<String, Vec<SymbolTableEntry>>,
     gensym: Gensym,
@@ -423,7 +423,7 @@ impl SymbolTable {
         self.gensym.gen(base_name, None)
     }
 
-    fn dummy() -> Self {
+    pub fn dummy() -> Self {
         Self {
             natives: HashSet::new(),
             defs: HashMap::new(),
