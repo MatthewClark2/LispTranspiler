@@ -1,7 +1,6 @@
 use crate::ast::Statement::*;
 use crate::ast::Value::*;
-use crate::lex::Token;
-use crate::lex::TokenValue::Symbol;
+use crate::lex::{Token, TokenValue::*};
 use crate::parse::ParseTree;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
@@ -10,6 +9,22 @@ use std::convert::TryFrom;
 pub enum ASTNode {
     Value(Value),
     Statement(Statement),
+}
+
+impl ASTNode {
+    fn as_value(&self) -> &Value {
+        match self {
+            ASTNode::Value(v) => v,
+            ASTNode::Statement(_) => panic!("Illegal conversion to value."),
+        }
+    }
+
+    fn as_statement(&self) -> &Statement {
+        match self {
+            ASTNode::Statement(s) => s,
+            ASTNode::Value(_) => panic!("Illegal conversion to value."),
+        }
+    }
 }
 
 pub fn construct_ast(parse_tree: &Vec<ParseTree>) -> Result<Vec<ASTNode>, (u32, String)> {
@@ -44,9 +59,9 @@ impl TryFrom<&ParseTree> for ASTNode {
 
                 return match &elems[0] {
                     ParseTree::Leaf(Token {
-                                        line,
-                                        value: Symbol(s),
-                                    }) if &s[..] == "if" => {
+                        line,
+                        value: Symbol(s),
+                    }) if &s[..] == "if" => {
                         if elems.len() != 4 {
                             return Err((
                                 *line,
@@ -67,9 +82,9 @@ impl TryFrom<&ParseTree> for ASTNode {
                         }
                     }
                     ParseTree::Leaf(Token {
-                                        line,
-                                        value: Symbol(s),
-                                    }) if &s[..] == "define" => {
+                        line,
+                        value: Symbol(s),
+                    }) if &s[..] == "define" => {
                         if elems.len() != 3 {
                             return Err((*line, String::from(format!("Expected exactly 2 arguments in `define` special form. Found {}.", elems.len() - 1))));
                         }
@@ -80,15 +95,15 @@ impl TryFrom<&ParseTree> for ASTNode {
                         match (defined, value) {
                             (
                                 ASTNode::Value(Literal(Token {
-                                                           value: Symbol(s), ..
-                                                       })),
+                                    value: Symbol(s), ..
+                                })),
                                 ASTNode::Value(v),
                             ) => Ok(ASTNode::Statement(Definition(s.clone(), v.clone()))),
                             (
                                 ASTNode::Value(Literal(Token {
-                                                           value: Symbol(s),
-                                                           line,
-                                                       })),
+                                    value: Symbol(s),
+                                    line,
+                                })),
                                 _,
                             ) => Err((line, String::from("Can only assign a symbol to a value."))),
                             (_, ASTNode::Value(v)) => {
@@ -164,9 +179,8 @@ pub enum Statement {
     // name, value, scope, is_redefinition
     // Definition(String, Value, Scope, bool),
     Definition(String, Value),
-    Redefinition(String, Value),
     Declaration(String),
-    ArgumentVector(Vec<Value>),
+    ExpandedCondition(Value, Vec<ASTNode>, Vec<ASTNode>),
 }
 
 pub trait ASTVisitor<T> {
@@ -190,7 +204,11 @@ impl Gensym {
     fn gen(&mut self, symbol: &str, prefix: Option<&str>) -> String {
         self.counter += 1;
         let s = Self::convert(symbol);
-        let prefix = if prefix.is_none() { "" } else { stringify!("_{}", prefix.unwrap()) };
+        let prefix = if prefix.is_none() {
+            ""
+        } else {
+            stringify!("_{}", prefix.unwrap())
+        };
 
         stringify!("gensym{}{}_{}", self.counter, prefix).to_string()
     }
@@ -228,7 +246,7 @@ impl Gensym {
     }
 }
 
-struct FunctionUnfurl {}
+struct FunctionUnfurl;
 
 impl ASTVisitor<Vec<ASTNode>> for FunctionUnfurl {
     fn try_visit(
@@ -283,7 +301,114 @@ impl ASTVisitor<Vec<ASTNode>> for FunctionUnfurl {
 }
 
 impl FunctionUnfurl {
-    fn new() -> Self { Self {} }
+    fn new() -> Self {
+        Self {}
+    }
+}
+
+struct ConditionUnroll;
+
+impl ConditionUnroll {
+    fn new() -> Self {
+        Self {}
+    }
+
+    fn split_condition(
+        &self,
+        c: &Box<Value>,
+        sym_table: &mut SymbolTable,
+    ) -> (Value, Vec<ASTNode>) {
+        let mut prefix = self.visit(&ASTNode::Value(*c.clone()), sym_table);
+        let value = prefix.pop().unwrap();
+
+        if let ASTNode::Value(v) = value {
+            (v, prefix)
+        } else {
+            panic!("Illegal program state.")
+        }
+    }
+}
+
+impl ASTVisitor<Vec<ASTNode>> for ConditionUnroll {
+    fn try_visit(
+        &self,
+        ast: &ASTNode,
+        sym_table: &mut SymbolTable,
+    ) -> Result<Vec<ASTNode>, (u32, String)> {
+        let mut output: Vec<ASTNode> = Vec::new();
+        let mut iftrue: Vec<ASTNode> = Vec::new();
+        let mut iffalse: Vec<ASTNode> = Vec::new();
+
+        let output_name = sym_table.generate("conditional_value", Scope::Global);
+
+        output.push(ASTNode::Statement(Declaration(output_name.clone())));
+
+        match ast {
+            // Check for nested conditions in top level ones.
+            ASTNode::Value(Condition(c, t, f)) => {
+                iftrue = self.try_visit(&ASTNode::Value(*t.clone()), sym_table)?;
+                iffalse = self.try_visit(&ASTNode::Value(*f.clone()), sym_table)?;
+                let mut condition;
+
+                match **c {
+                    Condition(_, _, _) => {
+                        let (value, mut prefix) = self.split_condition(c, sym_table);
+                        condition = Box::new(value);
+                        output.append(&mut prefix);
+                    }
+                    _ => condition = c.clone(),
+                }
+
+                output.push(ASTNode::Statement(ExpandedCondition(
+                    *condition, iftrue, iffalse,
+                )));
+                output.push(ASTNode::Value(Literal(Token::from(Symbol(
+                    output_name.clone(),
+                )))));
+            }
+            // Handle the case of a condition used as a value for a definition.
+            ASTNode::Statement(Definition(name, Condition(c, t, f))) => {
+                let mut prefix = self.try_visit(
+                    &ASTNode::Value(Condition(c.clone(), t.clone(), f.clone())),
+                    sym_table,
+                )?;
+                let value = prefix.pop().unwrap();
+
+                output.push(ASTNode::Statement(Definition(
+                    name.clone(),
+                    value.as_value().clone(),
+                )));
+
+                return Ok(output);
+            }
+            // Handle the case of a condition inside a function call.
+            ASTNode::Value(Call(callee, args)) => {
+                let mut new_args = Vec::new();
+
+                for arg in args {
+                    let mut expansion = self.try_visit(&ASTNode::Value(arg.clone()), sym_table)?;
+
+                    // No matter what, the final element is necessarily exists and is a Value.
+                    new_args.push(expansion.pop().unwrap());
+
+                    // The value of the condition has been emplaced, so we take the rest of the
+                    // expansion and put it before the newly formed function call.
+                    output.append(&mut expansion);
+                }
+
+                let new_args: Vec<Value> = new_args.iter().map(|node| node.as_value().clone()).collect();
+
+                output.push(ASTNode::Value(Call(callee.clone(), new_args)));
+
+                return Ok(output)
+            }
+            _ => return Ok(vec![ast.clone()]),
+        }
+
+        output.push(ASTNode::Value(Literal(Token::from(Symbol(output_name)))));
+
+        Ok(output)
+    }
 }
 
 #[derive(Clone)]
@@ -299,7 +424,11 @@ impl SymbolTable {
     }
 
     fn dummy() -> Self {
-        Self { natives: HashSet::new(), defs: HashMap::new(), gensym: Gensym::new() }
+        Self {
+            natives: HashSet::new(),
+            defs: HashMap::new(),
+            gensym: Gensym::new(),
+        }
     }
 }
 
@@ -361,7 +490,9 @@ mod visitor_tests {
     #[test]
     fn basic_call_unroll() {
         let ast = force_from("(format \"hello\" (+ 1 1))");
-        let ast = FunctionUnfurl::new().try_visit(&ast[0], &mut SymbolTable::dummy()).unwrap();
+        let ast = FunctionUnfurl::new()
+            .try_visit(&ast[0], &mut SymbolTable::dummy())
+            .unwrap();
 
         assert_eq!(ast.len(), 2);
 
@@ -502,7 +633,7 @@ mod ast_tests {
 
         if let ASTNode::Value(Condition(a, b, c)) = &ast[0] {
             if let (Literal(cond), Literal(if_true), Literal(if_false)) =
-            (a.as_ref(), b.as_ref(), c.as_ref())
+                (a.as_ref(), b.as_ref(), c.as_ref())
             {
                 assert_eq!(True, cond.value());
                 assert_eq!(Str("true".to_string()), if_true.value());
