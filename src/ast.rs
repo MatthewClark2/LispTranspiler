@@ -101,12 +101,12 @@ impl TryFrom<&ParseTree> for ASTNode {
                             ) => Ok(ASTNode::Statement(Definition(s.clone(), v.clone()))),
                             (
                                 ASTNode::Value(Literal(Token {
-                                    value: Symbol(s),
+                                    value: Symbol(_s),
                                     line,
                                 })),
                                 _,
                             ) => Err((line, String::from("Can only assign a symbol to a value."))),
-                            (_, ASTNode::Value(v)) => {
+                            (_, ASTNode::Value(_v)) => {
                                 Err((*line, String::from("Can only assign a value to a symbol.")))
                             }
                             _ => Err((*line, String::from("Invalid definition."))),
@@ -114,7 +114,7 @@ impl TryFrom<&ParseTree> for ASTNode {
                     }
                     ParseTree::Leaf(t) => match &t {
                         Token {
-                            value: Symbol(s),
+                            value: Symbol(_s),
                             line,
                         } => {
                             let mut args = Vec::new();
@@ -148,7 +148,7 @@ impl TryFrom<&ParseTree> for ASTNode {
                             String::from("Symbols are the only literal value that may be invoked."),
                         )),
                     },
-                    ParseTree::Branch(elems, start, _stop) => {
+                    ParseTree::Branch(_elems, start, _stop) => {
                         // TODO(matthew-c21): Later, it should be possible to invoke lambda special
                         //  forms as well as functions that may return functions.
                         Err((
@@ -210,7 +210,7 @@ impl Gensym {
             format!("_{}", prefix.unwrap()).as_str().to_owned()
         };
 
-        format!("gensym{}{}_{}", self.counter, prefix, symbol).to_string()
+        format!("gensym{}{}_{}", self.counter, prefix, s).to_string()
     }
 
     /// Transform a non-C compliant symbol into a C compliant one.
@@ -222,7 +222,7 @@ impl Gensym {
         }
 
         for c in name.chars() {
-            output.push_str(match c {
+            let s = match c {
                 '*' => "_times_",
                 '$' => "_dollar_",
                 '+' => "_plus_",
@@ -238,8 +238,13 @@ impl Gensym {
                 '>' => "_great_",
                 '=' => "_equal_",
                 '@' => "_at_",
-                _ => stringify!(c),
-            })
+                _ => {
+                    output.push(c);
+                    ""
+                },
+            };
+
+            output.push_str(s);
         }
 
         output
@@ -261,7 +266,7 @@ impl ASTVisitor<Vec<ASTNode>> for FunctionUnfurl {
             ASTNode::Value(Call(_, args)) => {
                 for arg in args {
                     match arg {
-                        Call(_, args) => {
+                        Call(_, _args) => {
                             let subexpansion =
                                 self.try_visit(&ASTNode::Value(arg.clone()), sym_table)?;
                             assert!(subexpansion.len() > 0);
@@ -300,19 +305,9 @@ impl ASTVisitor<Vec<ASTNode>> for FunctionUnfurl {
     }
 }
 
-impl FunctionUnfurl {
-    fn new() -> Self {
-        Self {}
-    }
-}
-
 pub struct ConditionUnroll;
 
 impl ConditionUnroll {
-    fn new() -> Self {
-        Self {}
-    }
-
     fn split_condition(
         &self,
         c: &Box<Value>,
@@ -336,8 +331,8 @@ impl ASTVisitor<Vec<ASTNode>> for ConditionUnroll {
         sym_table: &mut SymbolTable,
     ) -> Result<Vec<ASTNode>, (u32, String)> {
         let mut output: Vec<ASTNode> = Vec::new();
-        let mut iftrue: Vec<ASTNode> = Vec::new();
-        let mut iffalse: Vec<ASTNode> = Vec::new();
+        let mut iftrue: Vec<ASTNode>;
+        let mut iffalse: Vec<ASTNode>;
 
         match ast {
             // Check for nested conditions in top level ones.
@@ -347,7 +342,7 @@ impl ASTVisitor<Vec<ASTNode>> for ConditionUnroll {
 
                 iftrue = self.try_visit(&ASTNode::Value(*t.clone()), sym_table)?;
                 iffalse = self.try_visit(&ASTNode::Value(*f.clone()), sym_table)?;
-                let mut condition;
+                let condition;
 
                 match **c {
                     Condition(_, _, _) => {

@@ -2,7 +2,6 @@
 extern crate nom;
 
 use crate::ast::*;
-use crate::parse::ParseTree;
 use std::{env, fs};
 
 mod ast;
@@ -17,7 +16,7 @@ fn main() {
 
     for program in &programs[1..] {
         let contents = fs::read_to_string(program).expect("Something went wrong reading the file");
-        run(contents.as_str());
+        run(contents.as_str()).unwrap();
     }
 }
 

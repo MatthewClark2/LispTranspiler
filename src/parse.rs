@@ -23,7 +23,7 @@ impl ParseTree {
                     false,
                 );
             }
-            ParseTree::Branch(vals, start, stop) => {
+            ParseTree::Branch(vals, _start, _stop) => {
                 Self::add_with_indent(&mut output, "List: [", indent_level, true);
 
                 vals.iter()
