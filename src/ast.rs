@@ -339,13 +339,12 @@ impl ASTVisitor<Vec<ASTNode>> for ConditionUnroll {
         let mut iftrue: Vec<ASTNode> = Vec::new();
         let mut iffalse: Vec<ASTNode> = Vec::new();
 
-        let output_name = sym_table.generate("conditional_value", Scope::Global);
-
-        output.push(ASTNode::Statement(Declaration(output_name.clone())));
-
         match ast {
             // Check for nested conditions in top level ones.
             ASTNode::Value(Condition(c, t, f)) => {
+                let output_name = sym_table.generate("conditional_value", Scope::Global);
+                output.push(ASTNode::Statement(Declaration(output_name.clone())));
+
                 iftrue = self.try_visit(&ASTNode::Value(*t.clone()), sym_table)?;
                 iffalse = self.try_visit(&ASTNode::Value(*f.clone()), sym_table)?;
                 let mut condition;
@@ -359,12 +358,21 @@ impl ASTVisitor<Vec<ASTNode>> for ConditionUnroll {
                     _ => condition = c.clone(),
                 }
 
+                // Update each branch to assign to the output variable.
+                let true_value = iftrue.pop().unwrap();
+                let false_value = iffalse.pop().unwrap();
+
+                iftrue.push(ASTNode::Statement(Definition(output_name.clone(), true_value.as_value().to_owned())));
+                iffalse.push(ASTNode::Statement(Definition(output_name.clone(), false_value.as_value().to_owned())));
+
                 output.push(ASTNode::Statement(ExpandedCondition(
                     *condition, iftrue, iffalse,
                 )));
                 output.push(ASTNode::Value(Literal(Token::from(Symbol(
                     output_name.clone(),
                 )))));
+
+                Ok(output)
             }
             // Handle the case of a condition used as a value for a definition.
             ASTNode::Statement(Definition(name, Condition(c, t, f))) => {
@@ -379,7 +387,7 @@ impl ASTVisitor<Vec<ASTNode>> for ConditionUnroll {
                     value.as_value().clone(),
                 )));
 
-                return Ok(output);
+                Ok(output)
             }
             // Handle the case of a condition inside a function call.
             ASTNode::Value(Call(callee, args)) => {
@@ -402,12 +410,8 @@ impl ASTVisitor<Vec<ASTNode>> for ConditionUnroll {
 
                 return Ok(output)
             }
-            _ => return Ok(vec![ast.clone()]),
+            _ => Ok(vec![ast.clone()]),
         }
-
-        output.push(ASTNode::Value(Literal(Token::from(Symbol(output_name)))));
-
-        Ok(output)
     }
 }
 
