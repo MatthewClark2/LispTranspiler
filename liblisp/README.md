@@ -48,7 +48,41 @@ Improper lists (i.e. Scheme pairs) may be used with standard list functions as w
 The destruction of a list follows from the start of the list along to the final element. As a result, the deletion of a
 circular list is not well defined.
 
+### Lambdas
+
+Lambdas are the mechanism by which functions can be generated on the fly. Each lambda declaration creates a C function
+with a standard function signature at compile time. At runtime, lambda declarations return a
+Lambda object, which contains a pointer to the generated function and a vector of captured parameter values. The 
+generated C function will extract those values as necessary. See [here](#calling-lambdas) for more information.
+
+Lambdas should only be applied through the `invoke` C function.
+
 ## Function Conventions
+
+### Calling Functions
+
+All LISP functions have the same `LispDatum*(LispDatum**, size_t)` function signature. They take an array of LispDatum 
+pointers and the size of that array, perform some operation according to the body of the function, and return the result
+of that operation as a LispDatum.
+
+### Calling Lambdas
+
+Functions generated from lambda expressions always take a lambda object as their first argument. For example:
+
+```scheme
+(lambda (x) (f a x))
+```
+
+defines a lambda that captures some value `a`, and will generate a function something like:
+
+```c++
+LispDatum* generated_name(LispDatum** args, size_t nargs) {
+  auto lambda = args[0];
+  auto a = lambda->captures[0];
+  auto x = args[1];
+  return f([a, x], 2)
+}
+```
 
 ### Error Handling
 
