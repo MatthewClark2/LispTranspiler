@@ -4,6 +4,7 @@ use crate::lex::{Token, TokenValue::*};
 use crate::parse::ParseTree;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
+use crate::ast::Scope::Global;
 
 #[derive(Clone, Debug)]
 pub enum ASTNode {
@@ -59,9 +60,9 @@ impl TryFrom<&ParseTree> for ASTNode {
 
                 return match &elems[0] {
                     ParseTree::Leaf(Token {
-                        line,
-                        value: Symbol(s),
-                    }) if &s[..] == "if" => {
+                                        line,
+                                        value: Symbol(s),
+                                    }) if &s[..] == "if" => {
                         if elems.len() != 4 {
                             return Err((
                                 *line,
@@ -82,9 +83,9 @@ impl TryFrom<&ParseTree> for ASTNode {
                         }
                     }
                     ParseTree::Leaf(Token {
-                        line,
-                        value: Symbol(s),
-                    }) if &s[..] == "define" => {
+                                        line,
+                                        value: Symbol(s),
+                                    }) if &s[..] == "define" => {
                         if elems.len() != 3 {
                             return Err((*line, String::from(format!("Expected exactly 2 arguments in `define` special form. Found {}.", elems.len() - 1))));
                         }
@@ -95,15 +96,15 @@ impl TryFrom<&ParseTree> for ASTNode {
                         match (defined, value) {
                             (
                                 ASTNode::Value(Literal(Token {
-                                    value: Symbol(s), ..
-                                })),
+                                                           value: Symbol(s), ..
+                                                       })),
                                 ASTNode::Value(v),
                             ) => Ok(ASTNode::Statement(Definition(s.clone(), v.clone()))),
                             (
                                 ASTNode::Value(Literal(Token {
-                                    value: Symbol(_s),
-                                    line,
-                                })),
+                                                           value: Symbol(_s),
+                                                           line,
+                                                       })),
                                 _,
                             ) => Err((line, String::from("Can only assign a symbol to a value."))),
                             (_, ASTNode::Value(_v)) => {
@@ -179,6 +180,7 @@ pub enum Statement {
     // name, value, scope, is_redefinition
     // Definition(String, Value, Scope, bool),
     Definition(String, Value),
+    Redefinition(String, Value),
     Declaration(String),
     ExpandedCondition(Value, Vec<ASTNode>, Vec<ASTNode>),
 }
@@ -241,7 +243,7 @@ impl Gensym {
                 _ => {
                     output.push(c);
                     ""
-                },
+                }
             };
 
             output.push_str(s);
@@ -403,28 +405,136 @@ impl ASTVisitor<Vec<ASTNode>> for ConditionUnroll {
 
                 output.push(ASTNode::Value(Call(callee.clone(), new_args)));
 
-                return Ok(output)
+                return Ok(output);
             }
             _ => Ok(vec![ast.clone()]),
         }
     }
 }
 
+pub struct SymbolValidation;
+
+impl ASTVisitor<ASTNode> for SymbolValidation {
+    fn try_visit(&self, ast: &ASTNode, sym_table: &mut SymbolTable) -> Result<ASTNode, (u32, String)> {
+        match ast {
+            ASTNode::Statement(Statement::ExpandedCondition(v, t, f)) => {
+                let v = self.try_visit(&ASTNode::Value(v.clone()), sym_table)?;
+                let mut mt = Vec::new();
+                let mut mf = Vec::new();
+
+                for x in t {
+                    mt.push(self.try_visit(x, sym_table)?);
+                };
+
+                for x in f {
+                    mf.push(self.try_visit(x, sym_table)?);
+                };
+
+                Ok(ASTNode::Statement(ExpandedCondition(v.as_value().clone(), mt, mf)))
+            }
+            ASTNode::Statement(Definition(name, value)) => {
+                let value = self.try_visit(&ASTNode::Value(value.clone()), sym_table)?;
+
+                if !sym_table.contains(name.as_str()) {
+                    sym_table.register(name.as_str(), Global);
+                    Ok(ASTNode::Statement(Definition(name.clone(), value.as_value().to_owned())))
+                } else {
+                    Ok(ASTNode::Statement(Redefinition(name.clone(), value.as_value().to_owned())))
+                }
+            }
+            ASTNode::Statement(Redefinition(name, value)) => {
+                if !sym_table.contains(name.as_str()) {
+                    Err((0, format!("Cannot redefine symbol `{}` as it does not exist. Contact the developer.", name)))
+                } else {
+                    let value = self.try_visit(&ASTNode::Value(value.clone()), sym_table)?;
+                    Ok(ASTNode::Statement(Redefinition(name.clone(), value.as_value().to_owned())))
+                }
+            }
+            ASTNode::Statement(Declaration(name)) => {
+                if sym_table.contains(name.as_str()) {
+                    Err((0, format!("Redeclaration of existing name `{}`. Contact the developer.", name)))
+                } else {
+                    Ok(ast.clone())
+                }
+            }
+            ASTNode::Value(Condition(c, t, f)) => {
+                let c = self.try_visit(&ASTNode::Value(c.as_ref().clone()), sym_table)?;
+                let t = self.try_visit(&ASTNode::Value(t.as_ref().clone()), sym_table)?;
+                let f = self.try_visit(&ASTNode::Value(f.as_ref().clone()), sym_table)?;
+
+                Ok(ASTNode::Value(Condition(Box::new(c.as_value().to_owned()), Box::new(t.as_value().to_owned()), Box::new(f.as_value().to_owned()))))
+            }
+            ASTNode::Value(Call(callee, args)) => {
+                let callee = self.try_visit(&ASTNode::Value(callee.as_ref().clone()), sym_table)?;
+                let mut margs = Vec::new();
+
+                for arg in args {
+                    margs.push((self.try_visit(&ASTNode::Value(arg.clone()), sym_table)?).as_value().to_owned());
+                }
+
+                Ok(ASTNode::Value(Call(Box::new(callee.as_value().to_owned()), margs)))
+            }
+            ASTNode::Value(Literal(t)) => {
+                if let Str(name) = t.value() {
+                    if !sym_table.contains(name.as_str()) {
+                        return Err((t.line(), format!("Use of undefined variable: {}.", name)))
+                    }
+                }
+
+                Ok(ast.clone())
+            }
+        }
+    }
+}
+
 #[derive(Clone)]
 pub struct SymbolTable {
-    natives: HashSet<String>,
-    defs: HashMap<String, Vec<SymbolTableEntry>>,
+    natives: HashMap<String, String>,
+    defs: HashMap<String, SymbolTableEntry>,
     gensym: Gensym,
 }
 
 impl SymbolTable {
+    /// Strictly used for creating new variable names. Does not actually assign them within the
+    /// table.
     fn generate(&mut self, base_name: &str, _scope: Scope) -> String {
         self.gensym.gen(base_name, None)
     }
 
+    // Adds a new name to the table, generating a SymbolTableEntry containing the corresponding C
+    // variable name.
+    fn register(&mut self, name: &str, scope: Scope) {
+        let key = name.to_string();
+        let c_name = Gensym::convert(&key);
+
+        if !self.defs.contains_key(&key) {
+            self.defs.insert(key, SymbolTableEntry::from(c_name, scope));
+        }
+    }
+
+    fn contains(&self, name: &str) -> bool {
+        self.contains_fn(name) || self.contains_obj(name)
+    }
+
+    fn contains_fn(&self, name: &str) -> bool {
+        self.natives.contains_key(name)
+    }
+
+    fn contains_obj(&self, name: &str) -> bool {
+        self.defs.contains_key(name)
+    }
+
+    fn get(&self, name: &str) -> Option<&String> {
+        if self.natives.contains_key(name) {
+            self.natives.get(name)
+        } else {
+            self.defs.get(name).map(|n| n.c_name())
+        }
+    }
+
     pub fn dummy() -> Self {
         Self {
-            natives: HashSet::new(),
+            natives: HashMap::new(),
             defs: HashMap::new(),
             gensym: Gensym::new(),
         }
@@ -434,7 +544,21 @@ impl SymbolTable {
 #[derive(Clone)]
 struct SymbolTableEntry {
     c_name: String,
-    scopes: Vec<Scope>,
+    scope: Scope,
+}
+
+impl SymbolTableEntry {
+    fn from(c_name: String, scope: Scope) -> Self {
+        Self { c_name, scope }
+    }
+
+    fn c_name(&self) -> &String {
+        &self.c_name
+    }
+
+    fn scope(&self) -> &Scope {
+        &self.scope
+    }
 }
 
 #[derive(Clone)]
@@ -489,7 +613,7 @@ mod visitor_tests {
     #[test]
     fn basic_call_unroll() {
         let ast = force_from("(format \"hello\" (+ 1 1))");
-        let ast = FunctionUnfurl::new()
+        let ast = FunctionUnfurl
             .try_visit(&ast[0], &mut SymbolTable::dummy())
             .unwrap();
 
@@ -510,6 +634,97 @@ mod visitor_tests {
         } else {
             panic!()
         }
+    }
+
+    #[test]
+    fn simple_invalid_symbol() {
+        let ast = force_from("hello");
+        assert_eq!(1, ast.len());
+
+        let sv = SymbolValidation;
+        let mut st = SymbolTable::dummy();
+
+        let node = sv.try_visit(&ast[0], &mut st);
+
+        assert!(node.is_err());
+    }
+
+    #[test]
+    fn invalid_symbol_in_condition() {
+        let ast = force_from("(if something :hello :world)");
+        assert_eq!(1, ast.len());
+
+        let sv = SymbolValidation;
+        let mut st = SymbolTable::dummy();
+
+        let node = sv.try_visit(&ast[0], &mut st);
+
+        assert!(node.is_err());
+    }
+
+    #[test]
+    fn invalid_symbol_in_true_branch() {
+        let ast = force_from("(if :something hello :world)");
+        assert_eq!(1, ast.len());
+
+        let sv = SymbolValidation;
+        let mut st = SymbolTable::dummy();
+
+        let node = sv.try_visit(&ast[0], &mut st);
+
+        assert!(node.is_err());
+    }
+
+    #[test]
+    fn invalid_symbol_in_false_branch() {
+        let ast = force_from("(if :something :hello world)");
+        assert_eq!(1, ast.len());
+
+        let sv = SymbolValidation;
+        let mut st = SymbolTable::dummy();
+
+        let node = sv.try_visit(&ast[0], &mut st);
+
+        assert!(node.is_err());
+    }
+
+    fn invalid_symbol_in_definition() {
+        let ast = force_from("(define hello world)");
+        assert_eq!(1, ast.len());
+
+        let sv = SymbolValidation;
+        let mut st = SymbolTable::dummy();
+
+        let node = sv.try_visit(&ast[0], &mut st);
+
+        assert!(node.is_err());
+    }
+
+    fn symbol_valid_after_definition() {
+        let ast = force_from("(define hello :world) hello");
+        assert_eq!(2, ast.len());
+
+        let sv = SymbolValidation;
+        let mut st = SymbolTable::dummy();
+
+        let node = sv.try_visit(&ast[0], &mut st);
+
+        assert!(node.is_ok());
+    }
+
+    fn symbol_valid_after_redefinition() {
+        let ast = force_from(
+            "(define hello :world) hello\
+                   (define hello :goodbye) hello"
+        );
+        assert_eq!(2, ast.len());
+
+        let sv = SymbolValidation;
+        let mut st = SymbolTable::dummy();
+
+        let node = sv.try_visit(&ast[0], &mut st);
+
+        assert!(node.is_ok());
     }
 }
 
@@ -632,7 +847,7 @@ mod ast_tests {
 
         if let ASTNode::Value(Condition(a, b, c)) = &ast[0] {
             if let (Literal(cond), Literal(if_true), Literal(if_false)) =
-                (a.as_ref(), b.as_ref(), c.as_ref())
+            (a.as_ref(), b.as_ref(), c.as_ref())
             {
                 assert_eq!(True, cond.value());
                 assert_eq!(Str("true".to_string()), if_true.value());
