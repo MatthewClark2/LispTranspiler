@@ -475,7 +475,7 @@ impl ASTVisitor<ASTNode> for SymbolValidation {
                 Ok(ASTNode::Value(Call(Box::new(callee.as_value().to_owned()), margs)))
             }
             ASTNode::Value(Literal(t)) => {
-                if let Str(name) = t.value() {
+                if let Symbol(name) = t.value() {
                     if !sym_table.contains(name.as_str()) {
                         return Err((t.line(), format!("Use of undefined variable: {}.", name)))
                     }
