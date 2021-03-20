@@ -1,6 +1,7 @@
 # lispc
 
-lispc is a Rust crate aimed at generating C code from a roughly Scheme flavored LISP.
+lispc is a Rust crate aimed at generating C code from a roughly Scheme flavored LISP. More information can be found in
+the C library directory's README.
 
 ## Tests
 
@@ -15,25 +16,13 @@ probably be made in the future. For the sake of transparency, the script:
 
 1. Calls the lispc program, and saves its output to a file called `out.c`.
 2. Makes a new directory called `tmp/` in the current directory, and invokes CMake.
-3. Invokes `make out`, which compiles an exectuble for the generated C code.
+3. Invokes `make out`, which compiles an executable for the generated C code.
 4. Executes the generated program.
-l
 5. Leaves the `tmp` directory.
 
 If the script fails at any point, it leaves the `tmp/` directory.
 
 ## TODO(matthew-c21):
-
-There is a bug that prevents redefinition of variables. Therefore, there needs to be a set of known user variables so that 
-their values can be reused.
-
-Finish implementing the conditional special form.
-
-Add a symbol table to keep track of different symbols and their respective scopes so that unknown symbols can be caught
-at transpile time rather than at compile time. Consider adding a special name mangling mode for library vs. executable
-code. Only the definitions (vars, fns, macros) from a file should be inherited into a library file. This essentially
-means that compiling a file in library mode discards all top-level expressions, while compiling a file as an executable
-should 
 
 Improve documentation for the format of symbols, numbers, keywords, and hashmap literals. Also add more documentation
 for the behavior of standard library functions.
@@ -44,5 +33,9 @@ Modify the C runtime to use a reference counting garbage collection system. The 
 passed between functions as a global-ish variable. This would make it easier to later change the codebase to accept a
 general `LispState` type object.
 
-Implement
+Add another listener that finds uses of natively defined variables and replaces them with the appropriate value. C
+functions should be replaced with lambda expressions that refer to them. Should be added when you get around to lambda
+expressions.
+
+Update `Value::Call` to use a String as the callee since values cannot be called by themselves.
 

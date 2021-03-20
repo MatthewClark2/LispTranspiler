@@ -9,6 +9,64 @@ how the runtime works. Please check the README associated with the Rust project 
 When reading the code itself, you may notice some comments labelled `NOTE`. These are there to explain certain quirks
 that may appear when attempting to use the library, as well as the reasoning behind leaving those quirks.
 
+## Special Forms
+
+### if
+
+Takes the form `(if *condition* *true-branch* *false-branch*)`. Returns the value of the appropriate branch without 
+executing the other. For example, the following program
+
+```scheme
+(if #t
+    (valued-function)
+    (exit))
+    
+(format "program exited normally")
+```
+
+will print the string without prematurely exiting the program.
+
+### define
+
+Takes the form `(define *symbol* *value*)`, where the value can be any valued form, including not only literals, but
+also conditions, lambdas, and function calls. This value is defined at the top level, and is available in all subsequent
+code. It is not valued in and of itself. As such, the following program will compile
+
+```scheme
+(define x 10)
+(define y x)
+
+(format (* x y))
+```
+
+The following will not.
+
+```scheme
+(define y (define x 10))
+```
+
+### lambda
+
+Takes the form `(lambda *arg-list* *body*)`, where arg-list is a list of symbols and the body is a single valued form. 
+
+Variadic function arguments are supported via the `&` symbol. For example, `(lambda (n & nums) (* n (apply + nums)))`
+creates a function that takes at least one number, multiplying that by the sum of any other numbers provided.
+
+### defun
+
+Takes the form `(defun *name* *arg-list* *body*)`. Similar to `(define *name* (lambda *arg-list* *body*))`, but allows
+for the name to be used as a function directly. See the difference.
+
+```scheme
+(defun add (x y) (+ x y))
+    
+(define add2 (lambda (x y) (+ x y)))
+
+(add 1 2)
+(invoke add2 (1 2))
+; (add2 1 2)  ;; uncomment this line to see that it does not compile.
+```
+
 ## Data Types
 
 ### Numbers
