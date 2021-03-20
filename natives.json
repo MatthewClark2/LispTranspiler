@@ -27,8 +27,8 @@
   "variables": {
   },
   "factories": {
-    "int": "new_int",
-    "float": "new_float",
+    "int": "new_integer",
+    "float": "new_real",
     "complex": "new_complex",
     "rational": "new_rational",
     "string": "new_string",
