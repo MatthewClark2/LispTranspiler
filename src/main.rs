@@ -7,7 +7,7 @@ use std::{env, fs};
 mod ast;
 mod lex;
 mod parse;
-// mod ast;
+mod transpile;
 
 fn main() {
     // foo();
@@ -16,11 +16,11 @@ fn main() {
 
     for program in &programs[1..] {
         let contents = fs::read_to_string(program).expect("Something went wrong reading the file");
-        run(contents.as_str()).unwrap();
+        println!("{}", run(contents.as_str()));
     }
 }
 
-fn run(program: &str) -> Result<(), (u32, String)> {
+fn examine(program: &str) -> Result<(), (u32, String)> {
     println!("########## Initial Program ##########\n{}", program);
 
     // let tokens = lex::start("(format (* 1 2 3))  (format 17i) (format 1.28) (format (+ 6 7 (* 2 7)))").unwrap();
@@ -39,6 +39,7 @@ fn run(program: &str) -> Result<(), (u32, String)> {
 
     let cnde = ConditionUnroll;
     let fne = FunctionUnfurl;
+    let sv = SymbolValidation;
     let mut sym_table = SymbolTable::dummy();
     let ast = ast::construct_ast(&parse_tree)?;
 
@@ -50,15 +51,55 @@ fn run(program: &str) -> Result<(), (u32, String)> {
         preliminary_pass.append(&mut cnde.try_visit(&line, &mut sym_table)?);
     }
 
-    println!("\n########## AST After Conditional Unroll ##########\n{:#?}", preliminary_pass);
+    println!(
+        "\n########## AST After Conditional Unroll ##########\n{:#?}",
+        preliminary_pass
+    );
 
-    let mut output = Vec::new();
+    let mut secondary_pass = Vec::new();
 
     for line in preliminary_pass {
-        output.append(&mut fne.try_visit(&line, &mut sym_table)?);
+        secondary_pass.append(&mut fne.try_visit(&line, &mut sym_table)?);
     }
 
-    println!("\n########## Final AST ##########\n{:#?}", output);
+    println!(
+        "\n########## AST After Function Unrolling ##########\n{:#?}",
+        secondary_pass
+    );
+
+    let mut tertiary_pass = Vec::new();
+
+    for line in secondary_pass {
+        tertiary_pass.push(sv.try_visit(&line, &mut sym_table)?);
+    }
+
+    println!("\n########## Final AST ##########\n{:#?}", tertiary_pass);
 
     Ok(())
+}
+
+fn run(program: &str) -> String {
+    let mut sym_table = SymbolTable::load(None);
+    let sv = SymbolValidation;
+    let fne = FunctionUnfurl;
+    let ce = ConditionUnroll;
+
+    let tokens = lex::start(program).unwrap();
+    let parse_tree = parse::parse(&tokens).unwrap();
+    let ast = ast::construct_ast(&parse_tree).unwrap();
+
+    let ast: Vec<ASTNode> = ast
+        .iter()
+        .map(|n| ce.visit(n, &mut sym_table))
+        .flatten()
+        .collect();
+    let ast: Vec<ASTNode> = ast
+        .iter()
+        .map(|n| fne.visit(n, &mut sym_table))
+        .flatten()
+        .collect();
+    let ast = ast.iter().map(|n| sv.visit(n, &mut sym_table)).collect();
+
+    let mut transpiler = transpile::Transpiler::new(sym_table);
+    transpiler.translate(ast)
 }

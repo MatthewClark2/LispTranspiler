@@ -25,5 +25,15 @@
     "reverse": "reverse"
   },
   "variables": {
+  },
+  "factories": {
+    "int": "new_int",
+    "float": "new_float",
+    "complex": "new_complex",
+    "rational": "new_rational",
+    "string": "new_string",
+    "keyword": "new_keyword",
+    "true": "get_true",
+    "false": "get_false"
   }
 }

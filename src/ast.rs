@@ -1,10 +1,13 @@
+use crate::ast::Scope::Global;
 use crate::ast::Statement::*;
 use crate::ast::Value::*;
 use crate::lex::{Token, TokenValue::*};
 use crate::parse::ParseTree;
+use json;
 use std::collections::{HashMap, HashSet};
 use std::convert::TryFrom;
-use crate::ast::Scope::Global;
+use std::fs;
+use std::hash::Hash;
 
 #[derive(Clone, Debug)]
 pub enum ASTNode {
@@ -60,9 +63,9 @@ impl TryFrom<&ParseTree> for ASTNode {
 
                 return match &elems[0] {
                     ParseTree::Leaf(Token {
-                                        line,
-                                        value: Symbol(s),
-                                    }) if &s[..] == "if" => {
+                        line,
+                        value: Symbol(s),
+                    }) if &s[..] == "if" => {
                         if elems.len() != 4 {
                             return Err((
                                 *line,
@@ -83,9 +86,9 @@ impl TryFrom<&ParseTree> for ASTNode {
                         }
                     }
                     ParseTree::Leaf(Token {
-                                        line,
-                                        value: Symbol(s),
-                                    }) if &s[..] == "define" => {
+                        line,
+                        value: Symbol(s),
+                    }) if &s[..] == "define" => {
                         if elems.len() != 3 {
                             return Err((*line, String::from(format!("Expected exactly 2 arguments in `define` special form. Found {}.", elems.len() - 1))));
                         }
@@ -96,15 +99,15 @@ impl TryFrom<&ParseTree> for ASTNode {
                         match (defined, value) {
                             (
                                 ASTNode::Value(Literal(Token {
-                                                           value: Symbol(s), ..
-                                                       })),
+                                    value: Symbol(s), ..
+                                })),
                                 ASTNode::Value(v),
                             ) => Ok(ASTNode::Statement(Definition(s.clone(), v.clone()))),
                             (
                                 ASTNode::Value(Literal(Token {
-                                                           value: Symbol(_s),
-                                                           line,
-                                                       })),
+                                    value: Symbol(_s),
+                                    line,
+                                })),
                                 _,
                             ) => Err((line, String::from("Can only assign a symbol to a value."))),
                             (_, ASTNode::Value(_v)) => {
@@ -359,8 +362,14 @@ impl ASTVisitor<Vec<ASTNode>> for ConditionUnroll {
                 let true_value = iftrue.pop().unwrap();
                 let false_value = iffalse.pop().unwrap();
 
-                iftrue.push(ASTNode::Statement(Definition(output_name.clone(), true_value.as_value().to_owned())));
-                iffalse.push(ASTNode::Statement(Definition(output_name.clone(), false_value.as_value().to_owned())));
+                iftrue.push(ASTNode::Statement(Definition(
+                    output_name.clone(),
+                    true_value.as_value().to_owned(),
+                )));
+                iffalse.push(ASTNode::Statement(Definition(
+                    output_name.clone(),
+                    false_value.as_value().to_owned(),
+                )));
 
                 output.push(ASTNode::Statement(ExpandedCondition(
                     *condition, iftrue, iffalse,
@@ -401,7 +410,10 @@ impl ASTVisitor<Vec<ASTNode>> for ConditionUnroll {
                     output.append(&mut expansion);
                 }
 
-                let new_args: Vec<Value> = new_args.iter().map(|node| node.as_value().clone()).collect();
+                let new_args: Vec<Value> = new_args
+                    .iter()
+                    .map(|node| node.as_value().clone())
+                    .collect();
 
                 output.push(ASTNode::Value(Call(callee.clone(), new_args)));
 
@@ -415,7 +427,11 @@ impl ASTVisitor<Vec<ASTNode>> for ConditionUnroll {
 pub struct SymbolValidation;
 
 impl ASTVisitor<ASTNode> for SymbolValidation {
-    fn try_visit(&self, ast: &ASTNode, sym_table: &mut SymbolTable) -> Result<ASTNode, (u32, String)> {
+    fn try_visit(
+        &self,
+        ast: &ASTNode,
+        sym_table: &mut SymbolTable,
+    ) -> Result<ASTNode, (u32, String)> {
         match ast {
             ASTNode::Statement(Statement::ExpandedCondition(v, t, f)) => {
                 let v = self.try_visit(&ASTNode::Value(v.clone()), sym_table)?;
@@ -424,22 +440,32 @@ impl ASTVisitor<ASTNode> for SymbolValidation {
 
                 for x in t {
                     mt.push(self.try_visit(x, sym_table)?);
-                };
+                }
 
                 for x in f {
                     mf.push(self.try_visit(x, sym_table)?);
-                };
+                }
 
-                Ok(ASTNode::Statement(ExpandedCondition(v.as_value().clone(), mt, mf)))
+                Ok(ASTNode::Statement(ExpandedCondition(
+                    v.as_value().clone(),
+                    mt,
+                    mf,
+                )))
             }
             ASTNode::Statement(Definition(name, value)) => {
                 let value = self.try_visit(&ASTNode::Value(value.clone()), sym_table)?;
 
                 if !sym_table.contains(name.as_str()) {
                     sym_table.register(name.as_str(), Global);
-                    Ok(ASTNode::Statement(Definition(name.clone(), value.as_value().to_owned())))
+                    Ok(ASTNode::Statement(Definition(
+                        name.clone(),
+                        value.as_value().to_owned(),
+                    )))
                 } else {
-                    Ok(ASTNode::Statement(Redefinition(name.clone(), value.as_value().to_owned())))
+                    Ok(ASTNode::Statement(Redefinition(
+                        name.clone(),
+                        value.as_value().to_owned(),
+                    )))
                 }
             }
             ASTNode::Statement(Redefinition(name, value)) => {
@@ -447,12 +473,21 @@ impl ASTVisitor<ASTNode> for SymbolValidation {
                     Err((0, format!("Cannot redefine symbol `{}` as it does not exist. Contact the developer.", name)))
                 } else {
                     let value = self.try_visit(&ASTNode::Value(value.clone()), sym_table)?;
-                    Ok(ASTNode::Statement(Redefinition(name.clone(), value.as_value().to_owned())))
+                    Ok(ASTNode::Statement(Redefinition(
+                        name.clone(),
+                        value.as_value().to_owned(),
+                    )))
                 }
             }
             ASTNode::Statement(Declaration(name)) => {
                 if sym_table.contains(name.as_str()) {
-                    Err((0, format!("Redeclaration of existing name `{}`. Contact the developer.", name)))
+                    Err((
+                        0,
+                        format!(
+                            "Redeclaration of existing name `{}`. Contact the developer.",
+                            name
+                        ),
+                    ))
                 } else {
                     Ok(ast.clone())
                 }
@@ -462,22 +497,33 @@ impl ASTVisitor<ASTNode> for SymbolValidation {
                 let t = self.try_visit(&ASTNode::Value(t.as_ref().clone()), sym_table)?;
                 let f = self.try_visit(&ASTNode::Value(f.as_ref().clone()), sym_table)?;
 
-                Ok(ASTNode::Value(Condition(Box::new(c.as_value().to_owned()), Box::new(t.as_value().to_owned()), Box::new(f.as_value().to_owned()))))
+                Ok(ASTNode::Value(Condition(
+                    Box::new(c.as_value().to_owned()),
+                    Box::new(t.as_value().to_owned()),
+                    Box::new(f.as_value().to_owned()),
+                )))
             }
             ASTNode::Value(Call(callee, args)) => {
                 let callee = self.try_visit(&ASTNode::Value(callee.as_ref().clone()), sym_table)?;
                 let mut margs = Vec::new();
 
                 for arg in args {
-                    margs.push((self.try_visit(&ASTNode::Value(arg.clone()), sym_table)?).as_value().to_owned());
+                    margs.push(
+                        (self.try_visit(&ASTNode::Value(arg.clone()), sym_table)?)
+                            .as_value()
+                            .to_owned(),
+                    );
                 }
 
-                Ok(ASTNode::Value(Call(Box::new(callee.as_value().to_owned()), margs)))
+                Ok(ASTNode::Value(Call(
+                    Box::new(callee.as_value().to_owned()),
+                    margs,
+                )))
             }
             ASTNode::Value(Literal(t)) => {
                 if let Symbol(name) = t.value() {
                     if !sym_table.contains(name.as_str()) {
-                        return Err((t.line(), format!("Use of undefined variable: {}.", name)))
+                        return Err((t.line(), format!("Use of undefined variable: {}.", name)));
                     }
                 }
 
@@ -491,13 +537,14 @@ impl ASTVisitor<ASTNode> for SymbolValidation {
 pub struct SymbolTable {
     natives: HashMap<String, String>,
     defs: HashMap<String, SymbolTableEntry>,
+    factories: HashMap<String, String>,
     gensym: Gensym,
 }
 
 impl SymbolTable {
     /// Strictly used for creating new variable names. Does not actually assign them within the
     /// table.
-    fn generate(&mut self, base_name: &str, _scope: Scope) -> String {
+    pub fn generate(&mut self, base_name: &str, _scope: Scope) -> String {
         self.gensym.gen(base_name, None)
     }
 
@@ -512,19 +559,20 @@ impl SymbolTable {
         }
     }
 
-    fn contains(&self, name: &str) -> bool {
+    pub fn contains(&self, name: &str) -> bool {
         self.contains_fn(name) || self.contains_obj(name)
     }
 
-    fn contains_fn(&self, name: &str) -> bool {
+    pub fn contains_fn(&self, name: &str) -> bool {
         self.natives.contains_key(name)
     }
 
-    fn contains_obj(&self, name: &str) -> bool {
+    pub fn contains_obj(&self, name: &str) -> bool {
         self.defs.contains_key(name)
     }
 
-    fn get(&self, name: &str) -> Option<&String> {
+    // TODO(matthew-c21): Test this function.
+    pub fn get(&self, name: &str) -> Option<&String> {
         if self.natives.contains_key(name) {
             self.natives.get(name)
         } else {
@@ -532,10 +580,80 @@ impl SymbolTable {
         }
     }
 
+    pub fn get_factory(&self, name: &str) -> &String {
+        self.factories.get(name).unwrap()
+    }
+
     pub fn dummy() -> Self {
         Self {
             natives: HashMap::new(),
             defs: HashMap::new(),
+            factories: HashMap::new(),
+            gensym: Gensym::new(),
+        }
+    }
+
+    fn validate_json(obj: &json::JsonValue) {
+        let required_keys = vec!["functions", "variables", "factories"];
+
+        assert!(obj.is_object());
+
+        for key in &required_keys {
+            assert!(obj.has_key(key));
+        }
+
+        for name in &required_keys {
+            assert!(obj[name.to_string()].is_object());
+
+            for (_, value) in obj[name.to_string()].entries() {
+                assert!(value.is_string());
+            }
+        }
+
+
+        assert!(obj["factories"].has_key("int"));
+        assert!(obj["factories"].has_key("float"));
+        assert!(obj["factories"].has_key("complex"));
+        assert!(obj["factories"].has_key("rational"));
+        assert!(obj["factories"].has_key("string"));
+        assert!(obj["factories"].has_key("keyword"));
+        assert!(obj["factories"].has_key("true"));
+        assert!(obj["factories"].has_key("false"));
+    }
+
+    fn json_to_map(obj: &json::JsonValue, name: &str) -> HashMap<String, String> {
+        let mut map: HashMap<String, String> = HashMap::new();
+
+        for (lisp_name, c_name) in obj[name].entries() {
+            map.insert(lisp_name.to_string(), c_name.to_string());
+        }
+
+        map
+    }
+
+    pub fn load(filename: Option<&str>) -> Self {
+        let filename = match filename {
+            Some(s) => s,
+            None => "natives.json",
+        };
+
+        let contents = fs::read_to_string(filename).expect("Something went wrong reading the file");
+
+        let obj = json::parse(contents.as_str()).unwrap();
+
+        // Ensure that the JSON object is formed properly.
+        Self::validate_json(&obj);
+
+        let defs = Self::json_to_map(&obj, "variables");
+
+        let defs = defs.iter().map(|(k, v)| {
+            (k.clone(), SymbolTableEntry::from(v.clone(), Global))
+        }).collect();
+
+        Self {
+            defs,
+            natives: Self::json_to_map(&obj, "functions"),
+            factories: Self::json_to_map(&obj, "factories"),
             gensym: Gensym::new(),
         }
     }
@@ -688,6 +806,7 @@ mod visitor_tests {
         assert!(node.is_err());
     }
 
+    #[test]
     fn invalid_symbol_in_definition() {
         let ast = force_from("(define hello world)");
         assert_eq!(1, ast.len());
@@ -700,6 +819,7 @@ mod visitor_tests {
         assert!(node.is_err());
     }
 
+    #[test]
     fn symbol_valid_after_definition() {
         let ast = force_from("(define hello :world) hello");
         assert_eq!(2, ast.len());
@@ -712,12 +832,13 @@ mod visitor_tests {
         assert!(node.is_ok());
     }
 
+    #[test]
     fn symbol_valid_after_redefinition() {
         let ast = force_from(
             "(define hello :world) hello\
-                   (define hello :goodbye) hello"
+                   (define hello :goodbye) hello",
         );
-        assert_eq!(2, ast.len());
+        assert_eq!(4, ast.len());
 
         let sv = SymbolValidation;
         let mut st = SymbolTable::dummy();
@@ -847,7 +968,7 @@ mod ast_tests {
 
         if let ASTNode::Value(Condition(a, b, c)) = &ast[0] {
             if let (Literal(cond), Literal(if_true), Literal(if_false)) =
-            (a.as_ref(), b.as_ref(), c.as_ref())
+                (a.as_ref(), b.as_ref(), c.as_ref())
             {
                 assert_eq!(True, cond.value());
                 assert_eq!(Str("true".to_string()), if_true.value());
