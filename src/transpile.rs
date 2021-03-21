@@ -83,10 +83,7 @@ impl Transpiler {
                 }
             }
             ASTNode::Value(Call(callee, args)) => {
-                match callee.as_ref() {
-                    Literal(t) => {
-                        if let TokenValue::Symbol(name) = t.value() {
-                            let arglist = self.sym_table.generate("arglist", Global);
+                 let arglist = self.sym_table.generate("arglist", Global);
 
                             output.push(format!("struct LispDatum* {}[{}];\n", arglist, args.len()));
 
@@ -97,13 +94,7 @@ impl Transpiler {
                                 output.push(line);
                             }
 
-                            output.push(format!("{}({}, {})", self.sym_table.get(name.as_str()).unwrap(), arglist, args.len()))
-                        } else {
-                            panic!("Call has not been modified to only accept symbols.");
-                        }
-                    },
-                    _ => panic!("Call has not been modified to only accept symbols."),
-                }
+                            output.push(format!("{}({}, {})", self.sym_table.get(callee.as_str()).unwrap(), arglist, args.len()))
 
             }
             ASTNode::Value(Condition(c, t, f)) => {

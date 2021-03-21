@@ -118,7 +118,7 @@ impl TryFrom<&ParseTree> for ASTNode {
                     }
                     ParseTree::Leaf(t) => match &t {
                         Token {
-                            value: Symbol(_s),
+                            value: Symbol(s),
                             line,
                         } => {
                             let mut args = Vec::new();
@@ -145,7 +145,7 @@ impl TryFrom<&ParseTree> for ASTNode {
                                     _ => return arg,
                                 }
                             }
-                            Ok(ASTNode::Value(Call(Box::new(Literal(t.clone())), values)))
+                            Ok(ASTNode::Value(Call(s.clone(), values)))
                         }
                         _ => Err((
                             t.line(),
@@ -172,7 +172,7 @@ pub enum Value {
     Literal(Token),
 
     // obviously callee and arguments
-    Call(Box<Value>, Vec<Value>),
+    Call(String, Vec<Value>),
 
     // condition, value if true, value if false
     Condition(Box<Value>, Box<Value>, Box<Value>),
@@ -504,7 +504,6 @@ impl ASTVisitor<ASTNode> for SymbolValidation {
                 )))
             }
             ASTNode::Value(Call(callee, args)) => {
-                let callee = self.try_visit(&ASTNode::Value(callee.as_ref().clone()), sym_table)?;
                 let mut margs = Vec::new();
 
                 for arg in args {
@@ -516,7 +515,7 @@ impl ASTVisitor<ASTNode> for SymbolValidation {
                 }
 
                 Ok(ASTNode::Value(Call(
-                    Box::new(callee.as_value().to_owned()),
+                    callee.clone(),
                     margs,
                 )))
             }

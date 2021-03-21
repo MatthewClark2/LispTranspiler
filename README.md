@@ -36,6 +36,3 @@ general `LispState` type object.
 Add another listener that finds uses of natively defined variables and replaces them with the appropriate value. C
 functions should be replaced with lambda expressions that refer to them. Should be added when you get around to lambda
 expressions.
-
-Update `Value::Call` to use a String as the callee since values cannot be called by themselves.
-

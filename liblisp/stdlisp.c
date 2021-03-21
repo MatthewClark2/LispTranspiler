@@ -374,6 +374,7 @@ void display(struct LispDatum* datum) {
       break;
     case Keyword:
       printf(":%s", datum->label);
+      break;
     case Cons:
       // TODO(matthew-c21): Handle case of final element not getting extra space.
       printf("(");
@@ -401,10 +402,11 @@ void display(struct LispDatum* datum) {
       break;
     case Lambda:
       if (datum->name == NULL) {
-        printf("<anonymous function at 0x%p>", (void*)(datum->f));
+        printf("<anonymous function at 0x%p>", (void*)datum);
       } else {
         printf("<function %s>", datum->name);
       }
+      break;
   }
 }
 
