@@ -34,10 +34,10 @@ struct LispDatum* new_complex(double r, double i) {
   return x;
 }
 
-struct LispDatum* new_symbol(char* content) {
+struct LispDatum* new_symbol(const char* content) {
   struct LispDatum* x = malloc(sizeof(struct LispDatum));
   x->type = Symbol;
-  x->content = content;
+  strcpy(x->content, content);
   return x;
 }
 
@@ -80,6 +80,7 @@ void discard_datum(struct LispDatum* x) {
       free(x);
       break;
     case Symbol:
+    case Keyword:
       free(x->label);
       free(x);
       break;
@@ -91,6 +92,10 @@ void discard_datum(struct LispDatum* x) {
     case Bool:
     case Nil:
       break;
+    case Lambda:
+      for (uint32_t i = 0; i < x->n_captures; ++i) {
+        discard_datum(x->captures[i]);
+      }
   }
 }
 
@@ -161,4 +166,30 @@ struct LispDatum* get_false() {
 
 int truthy(const struct LispDatum* x) {
   return x != get_false();
+}
+
+struct LispDatum* new_keyword(const char* s) {
+  struct LispDatum* keyword = new_symbol(s);
+  keyword->type = Keyword;
+
+  return keyword;
+}
+
+struct LispDatum* new_lambda(LispFunction f, struct LispDatum** captures, uint32_t n_captures, char* name) {
+  struct LispDatum* lambda = malloc(sizeof(struct LispDatum));
+  lambda->type = Lambda;
+  lambda->f = f;
+
+  // The only named lambdas are those created at compile time, meaning they have a statically stored name.
+  lambda->name = name;
+
+  if (captures == NULL) {
+    lambda->captures = captures;
+    lambda->n_captures = n_captures;
+  } else {
+    lambda->captures = NULL;
+    lambda->n_captures = 0;
+  }
+
+  return lambda;
 }

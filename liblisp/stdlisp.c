@@ -91,6 +91,7 @@ void copy_lisp_datum(const struct LispDatum* source, struct LispDatum* dest) {
       dest->im = source->im;
       break;
     case Symbol:
+    case Keyword:
       dest->label = source->label;
       break;
     case Cons:
@@ -107,6 +108,10 @@ void copy_lisp_datum(const struct LispDatum* source, struct LispDatum* dest) {
     case Bool:
       dest->boolean = source->boolean;
       break;
+    case Lambda:
+      dest->f = source->f;
+      dest->captures = source->captures;
+      dest->n_captures = source->n_captures;
   }
 }
 
@@ -367,6 +372,8 @@ void display(struct LispDatum* datum) {
     case Symbol:
       printf("%s", datum->label);
       break;
+    case Keyword:
+      printf(":%s", datum->label);
     case Cons:
       // TODO(matthew-c21): Handle case of final element not getting extra space.
       printf("(");
@@ -392,6 +399,12 @@ void display(struct LispDatum* datum) {
     case Bool:
       printf("%s", datum->boolean ? "#t" : "#f");
       break;
+    case Lambda:
+      if (datum->name == NULL) {
+        printf("<anonymous function at 0x%p>", (void*)(datum->f));
+      } else {
+        printf("<function %s>", datum->name);
+      }
   }
 }
 
@@ -431,16 +444,30 @@ int datum_cmp(const struct LispDatum* a, const struct LispDatum* b) {
     switch (a->type) {
       case String:
         return a->length == b->length && strncmp(a->content, b->content, a->length) == 0;
-      case Bool:
-        return a->boolean == b->boolean;
-      default:
-        return 0;
+      case Symbol:
+      case Keyword:
+        return strcmp(a->label, b->label) == 0;
+      case Bool:  // Nil and Bool are both static, and must be equal to themselves.
+      case Nil:
+      case Lambda:
+        // There's no use comparing lambdas, so an individual lambda is only equal to itself.
+        return a == b;
+      case Cons:
+        if (a->car == NULL && b->car == NULL) {
+          return 1;
+        }
+
+        return datum_cmp(a->car, b->car) && datum_cmp(a->cdr, b->cdr);
+      case Integer:
+      case Real:
+      case Rational:
+      case Complex:
+        raise(Generic, "Invalid program state. Contact the developer.");
+        break;
     }
   }
 
-  // TODO(matthew-c21): Non-numeric type equality.
-
-  // Only numeric types are implemented, so just return false.
+  // Technically unreachable.
   return 0;
 }
 
