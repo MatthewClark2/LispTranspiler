@@ -133,4 +133,27 @@ struct LispDatum* append(struct LispDatum** args, uint32_t nargs);
  */
 struct LispDatum* reverse(struct LispDatum** args, uint32_t nargs);
 
+// TODO(matthew-c21): Test these functions. They are very important.
+/**
+ * Takes a function and a list, applying the list as arguments to the function, and returning the result.
+ *
+ * The following lines are (roughly) equivalent:
+ *      `(apply + (list 1 2))`
+ *      `(+ 1 2)`
+ */
+struct LispDatum* apply(struct LispDatum** args, uint32_t nargs);
+
+/**
+ * Variadic means of calling a function. Similar to `apply`, but takes any number of arguments bypassing the need to
+ * pass arguments via list.
+ *
+ * The following two lines are effectively equivalent:
+ *      `(funcall (lambda (x y) (* x y)) 1 2)`
+ *      `(apply (lambda (x y) (* x y)) (list 1 2))`
+ *
+ * The biggest difference is that funcall doesn't require the memory overhead of creating a list, while apply can take
+ * lists made at runtime, making it more flexible.
+ */
+struct LispDatum* funcall(struct LispDatum** args, uint32_t nargs);
+
 #endif //LISP_STDLISP_H

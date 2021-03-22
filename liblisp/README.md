@@ -63,7 +63,7 @@ for the name to be used as a function directly. See the difference.
 (define add2 (lambda (x y) (+ x y)))
 
 (add 1 2)
-(invoke add2 (1 2))
+(apply add2 (1 2))
 ; (add2 1 2)  ;; uncomment this line to see that it does not compile.
 ```
 
@@ -113,7 +113,7 @@ with a standard function signature at compile time. At runtime, lambda declarati
 Lambda object, which contains a pointer to the generated function and a vector of captured parameter values. The 
 generated C function will extract those values as necessary. See [here](#calling-lambdas) for more information.
 
-Lambdas should only be applied through the `invoke` C function.
+Lambdas should only be applied through the `apply` C function.
 
 ## Function Conventions
 

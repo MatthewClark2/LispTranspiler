@@ -22,7 +22,8 @@
     "length": "length",
     "cons": "cons",
     "append": "append",
-    "reverse": "reverse"
+    "reverse": "reverse",
+    "invoke": "invoke"
   },
   "variables": {
   },

@@ -793,3 +793,48 @@ struct LispDatum* logical_not(struct LispDatum** args, uint32_t nargs) {
   return truthy(args[0]) ? get_false() : get_true();
 }
 
+struct LispDatum* apply(struct LispDatum** args, uint32_t nargs) {
+  if (nargs != 2) {
+    return raise(Argument, "`apply` requires exactly two arguments.");
+  } else if (args[0]->type != Lambda || ((args[1]->type != Cons) && args[1]->type != Nil)) {
+    return raise(Type, "Expected `lambda` and `cons` type arguments to `apply`.");
+  }
+
+  // This is a double traversal, which is inefficient, but saves the hassle of allocating and freeing memory.
+  struct LispDatum* i = length(&args[1], 1);
+  int len = i->int_val;
+
+  free(i);  // TODO(matthew-c21): Clean up when the garbage collector is implemented.
+
+  // TODO(matthew-c21): Are variadic arguments handled at compile time or run time?
+  //  Answer: Do it at runtime. Native functions can probably work with the given array as is, but generated functions
+  //  will just need to interface through a list, which should just require a `rest = list(args + x, nargs - x)`, where
+  //  x is the number of named arguments.
+  struct LispDatum* f_args[len];
+  uint32_t j = 0;
+  struct LispDatum* ptr;
+
+  // Collect the list into an array.
+  for (ptr = args[1]; ptr != NULL && ptr->type == Cons; ptr = ptr->cdr) {
+    f_args[j++] = ptr->car;
+  }
+
+  // Improper list, so we give up.
+  if (ptr != NULL) {
+    return raise(Type, "`apply` requires a proper list.");
+  }
+
+  return args[0]->f(f_args, j);
+}
+
+struct LispDatum* funcall(struct LispDatum** args, uint32_t nargs) {
+  if (nargs == 0) {
+    return raise(Argument, "`funcall` requires at least one argument.");
+  } else if (args[0]->type != Lambda) {
+    return raise(Type, "Expected lambda.");
+  }
+
+  // If there's no other arguments, we want to avoid the risk of indexing past the array.
+  return args[0]->f(nargs == 1 ? NULL : args + 1, nargs - 1);
+}
+
