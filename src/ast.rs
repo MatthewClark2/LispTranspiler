@@ -1,13 +1,10 @@
-use crate::ast::Scope::Global;
-use crate::ast::Statement::*;
-use crate::ast::Value::*;
+use crate::ast::{Scope::Global, Statement::*, Value::*};
 use crate::lex::{Token, TokenValue::*};
 use crate::parse::ParseTree;
 use json;
-use std::collections::{HashMap, HashSet};
+use std::collections::HashMap;
 use std::convert::TryFrom;
 use std::fs;
-use std::hash::Hash;
 
 #[derive(Clone, Debug)]
 pub enum ASTNode {
@@ -71,7 +68,7 @@ impl TryFrom<&ParseTree> for ASTNode {
                                 *line,
                                 String::from(format!(
                                     "Expected exactly 3 arguments in `if` special form. Found {}.",
-                                    elems.len()
+                                    elems.len() - 1
                                 )),
                             ));
                         }
@@ -82,7 +79,7 @@ impl TryFrom<&ParseTree> for ASTNode {
 
                         match (cond, if_true, if_false) {
                             (ASTNode::Value(a), ASTNode::Value(b), ASTNode::Value(c)) => Ok(ASTNode::Value(Value::Condition(Box::new(a.clone()), Box::new(b.clone()), Box::new(c.clone())))),
-                            _ => Err((*line, String::from("Expected values for condition, true, and false branches of condition.")))
+                            _ => Err((*line, String::from("Expected values for condition, true, and false branches of conditional expression.")))
                         }
                     }
                     ParseTree::Leaf(Token {
@@ -173,6 +170,8 @@ pub enum Value {
 
     // obviously callee and arguments
     Call(String, Vec<Value>),
+
+    Lambda(Vec<String>, Option<String>, Box<Value>),
 
     // condition, value if true, value if false
     Condition(Box<Value>, Box<Value>, Box<Value>),
@@ -528,6 +527,12 @@ impl ASTVisitor<ASTNode> for SymbolValidation {
 
                 Ok(ast.clone())
             }
+            ASTNode::Value(Lambda(args, varargs, body)) => {
+                unimplemented!();
+                let body = self.try_visit(&ASTNode::Value(body.as_ref().clone()), sym_table)?;
+
+                Ok(ASTNode::Value(Lambda(args.clone(), varargs.clone(), Box::new(body.as_value().to_owned()))))
+            }
         }
     }
 }
@@ -722,7 +727,6 @@ mod test_utils {
 mod visitor_tests {
     use crate::ast::test_utils::force_from;
     use crate::ast::*;
-    use crate::ast::*;
     use crate::lex::TokenValue::*;
     use crate::lex::{start, TokenValue};
     use crate::parse::parse;
@@ -853,8 +857,6 @@ mod ast_tests {
     use crate::ast::test_utils::*;
     use crate::ast::*;
     use crate::lex::TokenValue::*;
-    use crate::lex::{start, TokenValue};
-    use crate::parse::parse;
 
     #[test]
     fn from_literal() {
@@ -877,7 +879,7 @@ mod ast_tests {
             assert_eq!("foobar", name.as_str());
 
             match value {
-                Literal(t) => assert_eq!(TokenValue::Str("foo bar".to_string()), t.value()),
+                Literal(t) => assert_eq!(Str("foo bar".to_string()), t.value()),
                 _ => panic!(),
             }
         } else {
@@ -955,10 +957,98 @@ mod ast_tests {
     }
 
     #[test]
-    fn wrong_number_condition() {}
+    fn wrong_number_condition() {
+        let result: Result<ASTNode, (u32, String)> = from_line("(if a b 1 2)");
+
+        assert!(result.is_err());
+
+        if let Err((_, msg)) = result {
+            assert_eq!(
+                "Expected exactly 3 arguments in `if` special form. Found 4.",
+                msg.as_str()
+            )
+        }
+
+        let result: Result<ASTNode, (u32, String)> = from_line("(if a b)");
+
+        assert!(result.is_err());
+
+        if let Err((_, msg)) = result {
+            assert_eq!(
+                "Expected exactly 3 arguments in `if` special form. Found 2.",
+                msg.as_str()
+            )
+        }
+
+        let result: Result<ASTNode, (u32, String)> = from_line("(if a)");
+
+        assert!(result.is_err());
+
+        if let Err((_, msg)) = result {
+            assert_eq!(
+                "Expected exactly 3 arguments in `if` special form. Found 1.",
+                msg.as_str()
+            )
+        }
+
+        let result: Result<ASTNode, (u32, String)> = from_line("(if)");
+
+        assert!(result.is_err());
+
+        if let Err((_, msg)) = result {
+            assert_eq!(
+                "Expected exactly 3 arguments in `if` special form. Found 0.",
+                msg.as_str()
+            )
+        }
+    }
 
     #[test]
-    fn conditional_non_values() {}
+    fn conditional_non_values() {
+        let result: Result<ASTNode, (u32, String)> = from_line("(if #t (define a 1) (define b 2))");
+
+        assert!(result.is_err());
+
+        if let Err((_, msg)) = result {
+            assert_eq!(
+                "Expected values for condition, true, and false branches of conditional expression.",
+                msg.as_str()
+            )
+        }
+
+        let result: Result<ASTNode, (u32, String)> = from_line("(if #t (define a 1) b)");
+
+        assert!(result.is_err());
+
+        if let Err((_, msg)) = result {
+            assert_eq!(
+                "Expected values for condition, true, and false branches of conditional expression.",
+                msg.as_str()
+            )
+        }
+
+        let result: Result<ASTNode, (u32, String)> = from_line("(if #t a (define b 2))");
+
+        assert!(result.is_err());
+
+        if let Err((_, msg)) = result {
+            assert_eq!(
+                "Expected values for condition, true, and false branches of conditional expression.",
+                msg.as_str()
+            )
+        }
+
+        let result: Result<ASTNode, (u32, String)> = from_line("(if (define t #t) a b)");
+
+        assert!(result.is_err());
+
+        if let Err((_, msg)) = result {
+            assert_eq!(
+                "Expected values for condition, true, and false branches of conditional expression.",
+                msg.as_str()
+            )
+        }
+    }
 
     #[test]
     fn from_condition() {
@@ -981,30 +1071,98 @@ mod ast_tests {
     }
 
     #[test]
-    fn from_malformed_condition() {}
+    fn from_lambda() {
+        let ast = force_from("(lambda (x y) (+ x y))");
+        assert_eq!(1, ast.len());
+
+        match &ast[0] {
+            ASTNode::Value(Lambda(args, None, body)) => {
+                assert_eq!(2, args.len());
+                assert_eq!("x", args[0].as_str());
+                assert_eq!("y", args[1].as_str());
+
+                if let Call(name, args) = body.as_ref() {
+                    assert_eq!("+", name.as_str());
+
+                    if let (Literal(t1), Literal(t2)) = (&args[0], &args[1]) {
+                        if let (Symbol(n1), Symbol(n2)) = (t1.value(), t2.value()) {
+                            assert_eq!("x", n1.as_str());
+                            assert_eq!("y", n2.as_str());
+                        } else {
+                            panic!()
+                        }
+                    } else {
+                        panic!()
+                    }
+                } else {
+                    panic!()
+                }
+            }
+            _ => panic!(),
+        }
+    }
 
     #[test]
-    // TODO(matthew-c21): After adding all the relevant listeners, replace this with something else.
-    fn basic_comprehensive() {}
+    fn varargs_lambda() {
+        let ast = force_from("(lambda (. zs) zs)");
+        assert_eq!(1, ast.len());
 
-    /*
-    Still need:
+        match &ast[0] {
+            ASTNode::Value(Lambda(args, Some(v), _)) => {
+                assert!(args.is_empty());
+                assert_eq!("zs", v.as_str());
+            }
+            _ => panic!()
+        }
+    }
 
-    symbol table tracing and relevant errors
-    validation of called functions
-    function call unfurling
-    conditional unfurling
-     */
+    #[test]
+    fn empty_args_lambda() {
+        let ast = force_from("(lambda () :empty)");
+        assert_eq!(1, ast.len());
+
+        match &ast[0] {
+            ASTNode::Value(Lambda(args, None, body)) if args.is_empty() => {
+                match body.as_ref() {
+                    Literal(t) => assert_eq!(Keyword("empty".to_string()), t.value()),
+                    _ => panic!()
+                }
+            },
+            _ => panic!()
+        }
+    }
+
+    #[test]
+    fn malformed_lambda() {
+        let result = from_line("(lambda)");
+        assert!(result.is_err());
+
+        if let Err((_, msg)) = result {
+            assert_eq!("Expected exactly 2 arguments to `lambda` special form. Found 0.", msg.as_str());
+        }
+
+        let result = from_line("(lambda (a b c))");
+        assert!(result.is_err());
+
+        if let Err((_, msg)) = result {
+            assert_eq!("Expected exactly 2 arguments to `lambda` special form. Found 1.", msg.as_str());
+        }
+
+        let result = from_line("(lambda (a b c) + (a b c))");
+        assert!(result.is_err());
+
+        if let Err((_, msg)) = result {
+            assert_eq!("Expected exactly 2 arguments to `lambda` special form. Found 3.", msg.as_str());
+        }
+    }
+
+    #[test]
+    fn no_arg_lambda() {
+        let result = from_line("(lambda :not-args :error)");
+        assert!(result.is_err());
+
+        if let Err((_, msg)) = result {
+            assert_eq!("First argument in `lambda` special form must be an arglist.", msg.as_str())
+        }
+    }
 }
-
-/* AST Construction
-
-1. Split off special forms via series of visitors. Each should ensure that the special form is
-   correctly formed.
-   - The SymbolTable should start being built when splitting off Definitions.
-2. Unfurl nested function calls.
-3. Trace through the program to ensure that symbols are properly utilized.
-4. Change any re-defined variables to ensure that they refer to the correct value in the scope in
-   which they have been redefined.
-
- */

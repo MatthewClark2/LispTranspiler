@@ -1,7 +1,6 @@
 use crate::ast::Scope::Global;
 use crate::ast::{ASTNode, Statement::*, SymbolTable, Value::*};
 use crate::lex::TokenValue;
-use std::collections::HashMap;
 
 pub struct Transpiler {
     sym_table: SymbolTable,
@@ -99,6 +98,9 @@ impl Transpiler {
             }
             ASTNode::Value(Condition(c, t, f)) => {
                 panic!("Conditions should have been upgraded to expanded conditions before this step. Contact the developer.")
+            }
+            ASTNode::Value(Lambda(..)) => {
+                unimplemented!()
             }
             ASTNode::Statement(Declaration(name)) => {
                 output.push(format!("struct LispDatum* {}", self.sym_table.get(name.as_str()).unwrap()))
