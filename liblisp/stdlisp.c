@@ -516,8 +516,10 @@ struct LispDatum* length(struct LispDatum** args, uint32_t nargs) {
     return raise(Argument, "`length` takes a single argument.");
   } else if (args[0]->type == Nil) {
     return new_integer(0);
+  } else if (args[0]->type == String) {
+    return new_integer(args[0]->length);
   } else if (args[0]->type != Cons) {
-    return raise(Type, "`length` expected list argument");
+      return raise(Type, "`length` expected list argument");
   }
 
   int len = 0;

@@ -36,3 +36,12 @@ general `LispState` type object.
 Add another listener that finds uses of natively defined variables and replaces them with the appropriate value. C
 functions should be replaced with lambda expressions that refer to them. Should be added when you get around to lambda
 expressions.
+
+Prune the AST to remove dead code (literal values outside of an s-expr). This should be the final step in visitor 
+application.
+
+Add a factory method that automatically applies visitors in the correct order.
+
+Either add `ParseTree::ConsList`, or update `ParseTree::List` to have an optional ParseTree to serve as a consed child.
+
+Statically allocate lambdas for internal functions as well as all keywords that appear in the program.

@@ -909,6 +909,16 @@ void Test_length(CuTest* tc) {
   l = length(&alist, 1);
   CuAssertTrue(tc,l->type == Integer);
   CuAssertTrue(tc, l->int_val == 2);
+
+  // String
+  discard_datum(args[0]);
+  discard_datum(args[1]);
+
+  args[0] = new_string("hello");
+
+  l = length(args, 1);
+  CuAssertTrue(tc, l->type == Integer);
+  CuAssertTrue(tc, l->int_val == 5);
 }
 
 void Test_length_errors(CuTest* tc) {

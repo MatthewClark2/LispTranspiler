@@ -49,7 +49,7 @@ The following will not.
 
 Takes the form `(lambda *arg-list* *body*)`, where arg-list is a list of symbols and the body is a single valued form. 
 
-Variadic function arguments are supported via the `&` symbol. For example, `(lambda (n & nums) (* n (apply + nums)))`
+Variadic function arguments are supported via the `.` symbol. For example, `(lambda (n . nums) (* n (apply + nums)))`
 creates a function that takes at least one number, multiplying that by the sum of any other numbers provided.
 
 ### defun

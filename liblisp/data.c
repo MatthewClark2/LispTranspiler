@@ -41,16 +41,6 @@ struct LispDatum* new_symbol(const char* content) {
   return x;
 }
 
-struct LispDatum* new_symbol_from_copy(char* content, uint32_t length) {
-  struct LispDatum* x = malloc(sizeof(struct LispDatum));
-  x->type = Symbol;
-  x->content = malloc(length);
-
-  strncpy(x->content, content, length);
-
-  return x;
-}
-
 // TODO(matthew-c21): Whenever garbage collection is implemented, this should update the reference count.
 struct LispDatum* new_cons(struct LispDatum* car, struct LispDatum* cdr) {
   struct LispDatum* x = malloc(sizeof(struct LispDatum));
@@ -183,7 +173,7 @@ struct LispDatum* new_lambda(LispFunction f, struct LispDatum** captures, uint32
   // The only named lambdas are those created at compile time, meaning they have a statically stored name.
   lambda->name = name;
 
-  if (captures == NULL) {
+  if (captures != NULL) {
     lambda->captures = captures;
     lambda->n_captures = n_captures;
   } else {

@@ -34,6 +34,9 @@ enum Cause GlobalErrorState;
  */
 void* raise(enum Cause cause, const char* msg);
 
+/**
+ * Change what happens when an error is raised. Mostly used for debugging purposes.
+ */
 void set_global_error_behavior(enum ErrorBehavior behavior);
 
 #endif //LISP_ERR_H

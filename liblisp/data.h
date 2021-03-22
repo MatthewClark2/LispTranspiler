@@ -6,13 +6,16 @@
 #include "stdlisp.h"
 
 
+/** Function pointer specifically designed to manage LISPy calling conventions.  */
+typedef struct LispDatum* (*LispFunction)(struct LispDatum**, uint32_t);
+
 // Note(matthew-c21): This approach to typing forces specific in-built types. For what I'm doing now, that's fine, but I
 //  may want to modify this in the future to accommodate user defined types and polymorphic behavior.
 // TODO(matthew-c21): Expand with new types as they are added.
-typedef struct LispDatum* (*LispFunction)(struct LispDatum**, uint32_t);
-
-/** The ordering of values of numeric types is important for determining type promotion. If type a > b, then b may be
- * promoted to a. The ordering of non-numeric types is arbitrary, and should never be used for the same purpose. */
+/**
+ * The ordering of values of numeric types is important for determining type promotion. If type a > b, then b may be
+ * promoted to a. The ordering of non-numeric types is arbitrary, and should never be used for the same purpose.
+ */
 enum LispDataType {
   Integer = 0, Rational = 1, Real = 2, Complex = 3, String, Symbol, Bool, Cons, Nil, Lambda, Keyword
 };
@@ -37,6 +40,13 @@ struct LispDatum {
     /** Cons cells do not make copies or transfer the ownership of the referred data. */
     struct { struct LispDatum* car; struct LispDatum* cdr; };  // cons
 
+    /**
+     * The "name" field is non-NULL only for static lambdas, meaning those associated with native C functions or those
+     * created using the `defun` special form.
+     *
+     * The behavior regarding a mismatch between the actual size of the captures array and the n_captures count is
+     * undefined.
+     */
     struct { LispFunction f; struct LispDatum** captures; uint32_t n_captures; char* name; };
   };
 };
@@ -60,22 +70,32 @@ struct LispDatum* new_string(const char* s);
 // TODO(matthew-c21): Deprecate this function and replace it with a `keyword` function that returns interned keywords.
 struct LispDatum* new_keyword(const char* s);
 
+/**
+ * Construct an anonymous function based around a static function f.
+ *
+ * @param captures an array containing the values captured by the lambda expression. An empty capture array should be
+ *        NULL.
+ * @param n_captures the size of the captures array. If captures is NULL, this value is ignored, and the resulting
+ *        lambda will record having 0 captures.
+ */
 struct LispDatum* new_lambda(LispFunction f, struct LispDatum** captures, uint32_t n_captures, char* name);
 
 struct LispDatum* new_cons(struct LispDatum* car, struct LispDatum* cdr);
 
 void discard_datum(struct LispDatum* x);
 
-// TODO(matthew-c21): I want nil to be a static constant, but I'm not sure how to deal with const-correctness.
 struct LispDatum* get_nil();
 
 void simplify(struct LispDatum* x);
 
+/**
+ * Determine whether or not a value is truthy. As mentioned in the README, only false and nil are considered to be
+ * false.
+ */
 int truthy(const struct LispDatum* x);
 
 // NOTE(matthew-c21): While these functions could just be a `from_string(char*, LispDataType)`, this method avoids the
 //  possibility of mis-tagged unions being generated.
 struct LispDatum* new_symbol(const char* content);
-struct LispDatum* new_symbol_from_copy(char* content, uint32_t length);
 
 #endif //LISP_DATA_H
