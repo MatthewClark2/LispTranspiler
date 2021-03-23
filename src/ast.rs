@@ -361,11 +361,11 @@ impl ASTVisitor<Vec<ASTNode>> for ConditionUnroll {
                 let true_value = iftrue.pop().unwrap();
                 let false_value = iffalse.pop().unwrap();
 
-                iftrue.push(ASTNode::Statement(Definition(
+                iftrue.push(ASTNode::Statement(Redefinition(
                     output_name.clone(),
                     true_value.as_value().to_owned(),
                 )));
-                iffalse.push(ASTNode::Statement(Definition(
+                iffalse.push(ASTNode::Statement(Redefinition(
                     output_name.clone(),
                     false_value.as_value().to_owned(),
                 )));
@@ -488,6 +488,8 @@ impl ASTVisitor<ASTNode> for SymbolValidation {
                         ),
                     ))
                 } else {
+                    // Register it.
+                    sym_table.register(name.as_str(), Global);
                     Ok(ast.clone())
                 }
             }

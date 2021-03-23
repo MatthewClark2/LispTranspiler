@@ -67,7 +67,7 @@ impl Transpiler {
                         output.push(format!("{}({:?})", self.sym_table.get_factory("string"), x))
                     }
                     TokenValue::Keyword(x) => {
-                        output.push(format!("{}({})", self.sym_table.get_factory("keyword"), x))
+                        output.push(format!("{}(\"{}\")", self.sym_table.get_factory("keyword"), x))
                     }
                     TokenValue::True => {
                         output.push(format!("{}()", self.sym_table.get_factory("true")))

@@ -37,6 +37,7 @@ struct LispDatum* new_complex(double r, double i) {
 struct LispDatum* new_symbol(const char* content) {
   struct LispDatum* x = malloc(sizeof(struct LispDatum));
   x->type = Symbol;
+  x->content = malloc(sizeof(strlen(content)));
   strcpy(x->content, content);
   return x;
 }
