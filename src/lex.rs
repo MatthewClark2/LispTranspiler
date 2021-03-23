@@ -48,6 +48,7 @@ pub enum TokenValue {
     Close,
     True,
     False,
+    Cons,
 }
 
 // NOTE(matthew-c21): Consider adding the offending text to this as well.
@@ -132,6 +133,7 @@ pub fn start(input: &str) -> Result<Vec<Token>, LexError> {
                 parsers.push(float);
                 parsers.push(rational);
                 parsers.push(complex);
+                parsers.push(cons);
                 parsers.push(boolean);
                 parsers.push(string);
                 parsers.push(keyword);
@@ -175,7 +177,7 @@ fn is_symbolic_start(ch: char) -> bool {
     vec![
         '*', '$', '+', '-', '_', '!', '?', '/', '%', '&', '^', '~', '<', '>', '=', '@',
     ]
-    .contains(&ch)
+        .contains(&ch)
         || ch.is_alphabetic()
 }
 
@@ -187,9 +189,9 @@ fn signed<T>(
     f: &'static dyn Fn(&str) -> IResult<&str, T>,
     required: bool,
 ) -> Box<dyn Fn(&str) -> IResult<&str, T>>
-where
-    T: FromStr,
-    <T as FromStr>::Err: Debug,
+    where
+        T: FromStr,
+        <T as FromStr>::Err: Debug,
 {
     if required {
         Box::new(move |input| {
@@ -228,6 +230,10 @@ named!(sign <&str, &str>,
 named!(signopt <&str, Option<&str>>,
     opt!(sign)
 );
+
+fn cons (input: &str) -> IResult<&str, TokenValue> {
+    tag(".")(input).map(|(rest, _cons)| { (rest, TokenValue::Cons) })
+}
 
 named!(symbol_content<&str, String>,
     map!(
@@ -550,15 +556,6 @@ mod tests {
             })
         );
 
-        // Standalone decimal point
-        assert_eq!(
-            start(" asdf \n. ( )"),
-            Err(LexError {
-                line: 2,
-                msg: "Unable to match `.` to a token value.".to_string(),
-            })
-        );
-
         // Floating point number not starting with a digit.
         assert_eq!(
             start(" asdf \n.123 ( )"),
@@ -592,5 +589,72 @@ mod tests {
             string("\"goodbye\\\"\""),
             Ok(("", Str("goodbye\\\"".to_string())))
         )
+    }
+
+    #[test]
+    fn cons_pair() {
+        assert_eq!(
+            start(". (1 2 . 3) (a b . zs)"),
+            Ok(vec!(
+                Token {
+                    line: 1,
+                    value: Cons,
+                },
+                Token {
+                    line: 1,
+                    value: Open,
+                },
+                Token {
+                    line: 1,
+                    value: Int(1),
+                },
+                Token {
+                    line: 1,
+                    value: Int(2),
+                },
+                Token {
+                    line: 1,
+                    value: Cons,
+                },
+                Token {
+                    line: 1,
+                    value: Int(3),
+                },
+                Token {
+                    line: 1,
+                    value: Close,
+                },
+                Token {
+                    line: 1,
+                    value: Open,
+                },
+                Token {
+                    line: 1,
+                    value: Symbol("a".to_string()),
+                },
+                Token {
+                    line: 1,
+                    value: Symbol("b".to_string()),
+                },
+                Token {
+                    line: 1,
+                    value: Cons,
+                },
+                Token {
+                    line: 1,
+                    value: Symbol("zs".to_string()),
+                },
+                Token {
+                    line: 1,
+                    value: Close,
+                },
+            ))
+        );
+    }
+
+    #[test]
+    fn near_cons_pairs() {
+        assert_eq!(start(". (1 2 . 3) (a b .zs)"), Err(LexError{ line: 1, msg: "Unable to match `.zs` to a token value.".to_string()}));
+        assert_eq!(start(". (1 2 . 3) (a b .3)"), Err(LexError{ line: 1, msg: "Unable to match `.3` to a token value.".to_string()}));
     }
 }
