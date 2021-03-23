@@ -376,16 +376,16 @@ void display(struct LispDatum* datum) {
       printf(":%s", datum->label);
       break;
     case Cons:
-      // TODO(matthew-c21): Handle case of final element not getting extra space.
       printf("(");
       while (is_occupied_node(read_ptr)) {
         display(read_ptr->car);
-        printf(" ");
+
+        if (is_occupied_node(read_ptr->cdr)) printf(" ");
         read_ptr = read_ptr->cdr;
       }
 
       if (read_ptr != NULL) {
-        printf(". ");
+        printf(" . ");
         display(read_ptr);
       }
 
