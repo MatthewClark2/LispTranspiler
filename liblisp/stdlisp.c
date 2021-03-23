@@ -442,7 +442,6 @@ int datum_cmp(const struct LispDatum* a, const struct LispDatum* b) {
         return 0;
     }
   } else if (a->type == b->type) {
-    // TODO(matthew-c21): Cons, symbol, keyword equality all missing.
     switch (a->type) {
       case String:
         return a->length == b->length && strncmp(a->content, b->content, a->length) == 0;
