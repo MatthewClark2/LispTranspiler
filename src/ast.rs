@@ -859,6 +859,7 @@ mod ast_tests {
     use crate::ast::test_utils::*;
     use crate::ast::*;
     use crate::lex::TokenValue::*;
+    use std::thread::panicking;
 
     #[test]
     fn from_literal() {
@@ -1141,21 +1142,21 @@ mod ast_tests {
 
         if let Err((_, msg)) = result {
             assert_eq!("Expected exactly 2 arguments to `lambda` special form. Found 0.", msg.as_str());
-        }
+        } else { panic!() }
 
         let result = from_line("(lambda (a b c))");
         assert!(result.is_err());
 
         if let Err((_, msg)) = result {
             assert_eq!("Expected exactly 2 arguments to `lambda` special form. Found 1.", msg.as_str());
-        }
+        } else { panic!() }
 
         let result = from_line("(lambda (a b c) + (a b c))");
         assert!(result.is_err());
 
         if let Err((_, msg)) = result {
             assert_eq!("Expected exactly 2 arguments to `lambda` special form. Found 3.", msg.as_str());
-        }
+        } else { panic!() }
     }
 
     #[test]
@@ -1165,6 +1166,20 @@ mod ast_tests {
 
         if let Err((_, msg)) = result {
             assert_eq!("First argument in `lambda` special form must be an arglist.", msg.as_str())
+        } else {
+            panic!()
+        }
+    }
+
+    #[test]
+    fn non_valued_body_lambda() {
+        let result = from_line("(lambda () (define t #t))");
+        assert!(result.is_err());
+
+        if let Err((_, msg)) = result {
+            assert_eq!("Final argument to `lambda` special form must be a value.", msg.as_str())
+        } else {
+            panic!()
         }
     }
 }
