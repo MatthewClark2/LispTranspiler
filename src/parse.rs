@@ -37,16 +37,25 @@ fn list(tokens: &[Token], start_line: u32) -> Result<(ParseTree, &[Token]), (u32
 
     while !t.is_empty() {
         if t[0].value() == TokenValue::Close {
-            return Ok((ParseTree::Branch(vals, start_line, t[0].line(), None), &t[1..]));
+            return Ok((
+                ParseTree::Branch(vals, start_line, t[0].line(), None),
+                &t[1..],
+            ));
         } else if t[0].value() == TokenValue::Cons {
             // Handle it.
             let (consed, rest) = statement(&t[1..])?;
             if rest.is_empty() {
                 return Err((t[0].line(), String::from("Expected EOF.")));
             } else if rest[0].value() != TokenValue::Close {
-                return Err((t[0].line(), String::from("Expected end of list following cons.")));
+                return Err((
+                    t[0].line(),
+                    String::from("Expected end of list following cons."),
+                ));
             }
-            return Ok((Branch(vals, start_line, rest[0].line(), Some(Box::new(consed))), &rest[1..]));
+            return Ok((
+                Branch(vals, start_line, rest[0].line(), Some(Box::new(consed))),
+                &rest[1..],
+            ));
         }
 
         let r = statement(t)?;
@@ -61,8 +70,8 @@ fn list(tokens: &[Token], start_line: u32) -> Result<(ParseTree, &[Token]), (u32
 #[cfg(test)]
 mod test {
     use crate::lex::{start, Token, TokenValue::*};
-    use crate::parse::{parse, ParseTree};
     use crate::parse::ParseTree::{Branch, Leaf};
+    use crate::parse::{parse, ParseTree};
 
     #[test]
     fn single_terminal() {
@@ -130,7 +139,10 @@ mod test {
             Branch(x, 0, 0, None) => {
                 assert_eq!(x.len(), 2);
                 assert_eq!(x[0], Branch(Vec::new(), 0, 0, None));
-                assert_eq!(x[1], Branch(vec!(Branch(Vec::new(), 0, 0, None)), 0, 0, None));
+                assert_eq!(
+                    x[1],
+                    Branch(vec!(Branch(Vec::new(), 0, 0, None)), 0, 0, None)
+                );
             }
             _ => assert!(false),
         }
@@ -182,7 +194,7 @@ mod test {
             Token::from(Open),
             Token::from(Close),
         ])
-            .unwrap();
+        .unwrap();
     }
 
     #[test]
@@ -191,7 +203,18 @@ mod test {
         let x = parse(&tokens).unwrap();
 
         assert_eq!(1, x.len());
-        assert_eq!(Branch(Vec::new(), 1, 1, Some(Box::new(Leaf(Token { line: 1, value: Symbol("zs".to_string()) })))), x[0])
+        assert_eq!(
+            Branch(
+                Vec::new(),
+                1,
+                1,
+                Some(Box::new(Leaf(Token {
+                    line: 1,
+                    value: Symbol("zs".to_string())
+                })))
+            ),
+            x[0]
+        )
     }
 
     #[test]
@@ -202,9 +225,21 @@ mod test {
 
         if let Branch(lambda_expr, 1, 1, None) = &x[0] {
             assert_eq!(3, lambda_expr.len());
-            assert_eq!(&Leaf(Token { line: 1, value: Symbol("lambda".to_string()) }), &lambda_expr[0]);
+            assert_eq!(
+                &Leaf(Token {
+                    line: 1,
+                    value: Symbol("lambda".to_string())
+                }),
+                &lambda_expr[0]
+            );
             assert_eq!(&Branch(Vec::new(), 1, 1, None), &lambda_expr[1]);
-            assert_eq!(&Leaf(Token { line: 1, value: Nil }), &lambda_expr[2])
+            assert_eq!(
+                &Leaf(Token {
+                    line: 1,
+                    value: Nil
+                }),
+                &lambda_expr[2]
+            )
         } else {
             panic!("Expected list")
         }

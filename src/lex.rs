@@ -178,7 +178,7 @@ fn is_symbolic_start(ch: char) -> bool {
     vec![
         '*', '$', '+', '-', '_', '!', '?', '/', '%', '&', '^', '~', '<', '>', '=', '@',
     ]
-        .contains(&ch)
+    .contains(&ch)
         || ch.is_alphabetic()
 }
 
@@ -190,9 +190,9 @@ fn signed<T>(
     f: &'static dyn Fn(&str) -> IResult<&str, T>,
     required: bool,
 ) -> Box<dyn Fn(&str) -> IResult<&str, T>>
-    where
-        T: FromStr,
-        <T as FromStr>::Err: Debug,
+where
+    T: FromStr,
+    <T as FromStr>::Err: Debug,
 {
     if required {
         Box::new(move |input| {
@@ -232,8 +232,8 @@ named!(signopt <&str, Option<&str>>,
     opt!(sign)
 );
 
-fn cons (input: &str) -> IResult<&str, TokenValue> {
-    tag(".")(input).map(|(rest, _cons)| { (rest, TokenValue::Cons) })
+fn cons(input: &str) -> IResult<&str, TokenValue> {
+    tag(".")(input).map(|(rest, _cons)| (rest, TokenValue::Cons))
 }
 
 named!(symbol_content<&str, String>,
@@ -351,11 +351,14 @@ fn keyword(input: &str) -> IResult<&str, TokenValue> {
 fn symbol(input: &str) -> IResult<&str, TokenValue> {
     let r = symbol_content(input)?;
 
-    Ok((r.0, if r.1.as_str() == "nil" {
-       TokenValue::Nil
-    } else {
-        TokenValue::Symbol(r.1)
-    }))
+    Ok((
+        r.0,
+        if r.1.as_str() == "nil" {
+            TokenValue::Nil
+        } else {
+            TokenValue::Symbol(r.1)
+        },
+    ))
 }
 
 fn string(input: &str) -> IResult<&str, TokenValue> {
@@ -659,12 +662,30 @@ mod tests {
 
     #[test]
     fn near_cons_pairs() {
-        assert_eq!(start(". (1 2 . 3) (a b .zs)"), Err(LexError{ line: 1, msg: "Unable to match `.zs` to a token value.".to_string()}));
-        assert_eq!(start(". (1 2 . 3) (a b .3)"), Err(LexError{ line: 1, msg: "Unable to match `.3` to a token value.".to_string()}));
+        assert_eq!(
+            start(". (1 2 . 3) (a b .zs)"),
+            Err(LexError {
+                line: 1,
+                msg: "Unable to match `.zs` to a token value.".to_string()
+            })
+        );
+        assert_eq!(
+            start(". (1 2 . 3) (a b .3)"),
+            Err(LexError {
+                line: 1,
+                msg: "Unable to match `.3` to a token value.".to_string()
+            })
+        );
     }
 
     #[test]
     fn nil() {
-        assert_eq!(start("nil"), Ok(vec![Token { line: 1, value: Nil }]))
+        assert_eq!(
+            start("nil"),
+            Ok(vec![Token {
+                line: 1,
+                value: Nil
+            }])
+        )
     }
 }

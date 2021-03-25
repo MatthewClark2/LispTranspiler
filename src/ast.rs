@@ -113,6 +113,64 @@ impl TryFrom<&ParseTree> for ASTNode {
                             _ => Err((*line, String::from("Invalid definition."))),
                         }
                     }
+                    ParseTree::Leaf(Token {
+                        line,
+                        value: Symbol(s),
+                    }) if &s[..] == "lambda" => {
+                        if elems.len() != 3 {
+                            return Err((*line, format!("Expected exactly 2 arguments in `lambda` special form. Found {}.", elems.len() - 1)));
+                        }
+
+                        let mut names = Vec::new();
+                        let mut vararg = None;
+
+                        match &elems[1] {
+                            ParseTree::Branch(args, start, _stop, varg) => {
+                                for arg in args {
+                                    if let ParseTree::Leaf(t) = arg {
+                                        match t.value() {
+                                            Symbol(n) => names.push(n.clone()),
+                                            _ => return Err((*start, "All elements in first argument to `lambda` special form should be symbols.".to_string()))
+                                        }
+                                    } else {
+                                        return Err((*start, "All elements in first argument to `lambda` special form should be symbols.".to_string()));
+                                    }
+                                }
+
+                                if let Some(b) = varg {
+                                    match b.as_ref() {
+                                        ParseTree::Leaf(t) => {
+                                            if let Symbol(n) = t.value() {
+                                                vararg = Some(n.clone());
+                                            } else {
+                                                return Err((t.line(), "Expected a symbol to be used as a vararg.".to_string()))
+                                            }
+                                        }
+                                        ParseTree::Branch(_, start, _, _) => return Err((*start, "All elements in first argument to `lambda` special form should be symbols.".to_string()))
+                                    }
+                                }
+                            }
+                            _ => {
+                                return Err((
+                                    *start,
+                                    "Expected arglist in second position of `lambda` special form."
+                                        .to_string(),
+                                ))
+                            }
+                        }
+
+                        let body = Self::try_from(&elems[2])?;
+
+                        if let ASTNode::Statement(_) = body {
+                            return Err((
+                                *line,
+                                "Expected final argument to `lambda` special form to be a value."
+                                    .to_string(),
+                            ));
+                        }
+
+                        Ok(ASTNode::Value(Lambda(names, vararg, vec![body])))
+                    }
                     ParseTree::Leaf(t) => match &t {
                         Token {
                             value: Symbol(s),
@@ -149,14 +207,10 @@ impl TryFrom<&ParseTree> for ASTNode {
                             String::from("Symbols are the only literal value that may be invoked."),
                         )),
                     },
-                    ParseTree::Branch(_elems, start, _stop, _) => {
-                        // TODO(matthew-c21): Later, it should be possible to invoke lambda special
-                        //  forms as well as functions that may return functions.
-                        Err((
-                            *start,
-                            String::from("Compound forms cannot be used as function calls."),
-                        ))
-                    }
+                    ParseTree::Branch(_elems, start, _stop, _) => Err((
+                        *start,
+                        String::from("Compound forms cannot be used as function calls."),
+                    )),
                 };
             }
         }
@@ -171,7 +225,10 @@ pub enum Value {
     // obviously callee and arguments
     Call(String, Vec<Value>),
 
-    Lambda(Vec<String>, Option<String>, Box<Value>),
+    // required_args, vararg, body
+    // The body should be a single element on creation, but may be expanded as a result of other
+    // visitors.
+    Lambda(Vec<String>, Option<String>, Vec<ASTNode>),
 
     // condition, value if true, value if false
     Condition(Box<Value>, Box<Value>, Box<Value>),
@@ -515,10 +572,7 @@ impl ASTVisitor<ASTNode> for SymbolValidation {
                     );
                 }
 
-                Ok(ASTNode::Value(Call(
-                    callee.clone(),
-                    margs,
-                )))
+                Ok(ASTNode::Value(Call(callee.clone(), margs)))
             }
             ASTNode::Value(Literal(t)) => {
                 if let Symbol(name) = t.value() {
@@ -530,10 +584,23 @@ impl ASTVisitor<ASTNode> for SymbolValidation {
                 Ok(ast.clone())
             }
             ASTNode::Value(Lambda(args, varargs, body)) => {
-                unimplemented!();
-                let body = self.try_visit(&ASTNode::Value(body.as_ref().clone()), sym_table)?;
+                let body: Vec<Result<ASTNode, (u32, String)>> =
+                    body.iter().map(|n| self.try_visit(n, sym_table)).collect();
 
-                Ok(ASTNode::Value(Lambda(args.clone(), varargs.clone(), Box::new(body.as_value().to_owned()))))
+                let mut new_body = Vec::new();
+                for n in body {
+                    if n.is_err() {
+                        return n;
+                    } else {
+                        new_body.push(n.unwrap())
+                    }
+                }
+
+                Ok(ASTNode::Value(Lambda(
+                    args.clone(),
+                    varargs.clone(),
+                    new_body,
+                )))
             }
         }
     }
@@ -616,7 +683,6 @@ impl SymbolTable {
             }
         }
 
-
         assert!(obj["factories"].has_key("int"));
         assert!(obj["factories"].has_key("float"));
         assert!(obj["factories"].has_key("complex"));
@@ -652,9 +718,10 @@ impl SymbolTable {
 
         let defs = Self::json_to_map(&obj, "variables");
 
-        let defs = defs.iter().map(|(k, v)| {
-            (k.clone(), SymbolTableEntry::from(v.clone(), Global))
-        }).collect();
+        let defs = defs
+            .iter()
+            .map(|(k, v)| (k.clone(), SymbolTableEntry::from(v.clone(), Global)))
+            .collect();
 
         Self {
             defs,
@@ -1084,7 +1151,7 @@ mod ast_tests {
                 assert_eq!("x", args[0].as_str());
                 assert_eq!("y", args[1].as_str());
 
-                if let Call(name, args) = body.as_ref() {
+                if let ASTNode::Value(Call(name, args)) = &body[0] {
                     assert_eq!("+", name.as_str());
 
                     if let (Literal(t1), Literal(t2)) = (&args[0], &args[1]) {
@@ -1115,7 +1182,7 @@ mod ast_tests {
                 assert!(args.is_empty());
                 assert_eq!("zs", v.as_str());
             }
-            _ => panic!()
+            _ => panic!(),
         }
     }
 
@@ -1125,13 +1192,11 @@ mod ast_tests {
         assert_eq!(1, ast.len());
 
         match &ast[0] {
-            ASTNode::Value(Lambda(args, None, body)) if args.is_empty() => {
-                match body.as_ref() {
-                    Literal(t) => assert_eq!(Keyword("empty".to_string()), t.value()),
-                    _ => panic!()
-                }
+            ASTNode::Value(Lambda(args, None, body)) if args.is_empty() => match &body[0] {
+                ASTNode::Value(Literal(t)) => assert_eq!(Keyword("empty".to_string()), t.value()),
+                _ => panic!(),
             },
-            _ => panic!()
+            _ => panic!(),
         }
     }
 
@@ -1141,22 +1206,37 @@ mod ast_tests {
         assert!(result.is_err());
 
         if let Err((_, msg)) = result {
-            assert_eq!("Expected exactly 2 arguments to `lambda` special form. Found 0.", msg.as_str());
-        } else { panic!() }
+            assert_eq!(
+                "Expected exactly 2 arguments in `lambda` special form. Found 0.",
+                msg.as_str()
+            );
+        } else {
+            panic!()
+        }
 
         let result = from_line("(lambda (a b c))");
         assert!(result.is_err());
 
         if let Err((_, msg)) = result {
-            assert_eq!("Expected exactly 2 arguments to `lambda` special form. Found 1.", msg.as_str());
-        } else { panic!() }
+            assert_eq!(
+                "Expected exactly 2 arguments in `lambda` special form. Found 1.",
+                msg.as_str()
+            );
+        } else {
+            panic!()
+        }
 
         let result = from_line("(lambda (a b c) + (a b c))");
         assert!(result.is_err());
 
         if let Err((_, msg)) = result {
-            assert_eq!("Expected exactly 2 arguments to `lambda` special form. Found 3.", msg.as_str());
-        } else { panic!() }
+            assert_eq!(
+                "Expected exactly 2 arguments in `lambda` special form. Found 3.",
+                msg.as_str()
+            );
+        } else {
+            panic!()
+        }
     }
 
     #[test]
@@ -1165,7 +1245,10 @@ mod ast_tests {
         assert!(result.is_err());
 
         if let Err((_, msg)) = result {
-            assert_eq!("First argument in `lambda` special form must be an arglist.", msg.as_str())
+            assert_eq!(
+                "Expected arglist in second position of `lambda` special form.",
+                msg.as_str()
+            )
         } else {
             panic!()
         }
@@ -1177,7 +1260,10 @@ mod ast_tests {
         assert!(result.is_err());
 
         if let Err((_, msg)) = result {
-            assert_eq!("Final argument to `lambda` special form must be a value.", msg.as_str())
+            assert_eq!(
+                "Expected final argument to `lambda` special form to be a value.",
+                msg.as_str()
+            )
         } else {
             panic!()
         }
