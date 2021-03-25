@@ -201,9 +201,9 @@ mod test {
 
         if let Branch(lambda_expr, 1, 1, None) = &x[0] {
             assert_eq!(3, lambda_expr.len());
-            assert_eq!(Leaf(Token { line: 1, value: Symbol("lambda".to_string()) }), &lambda_expr[0]);
-            assert_eq!(Branch(Vec::new(), 1, 1, None), &lambda_expr[1]);
-            assert_eq!(Leaf(Token { line: 1, value: Nil }), &lambda_expr[2])
+            assert_eq!(&Leaf(Token { line: 1, value: Symbol("lambda".to_string()) }), &lambda_expr[0]);
+            assert_eq!(&Branch(Vec::new(), 1, 1, None), &lambda_expr[1]);
+            assert_eq!(&Leaf(Token { line: 1, value: Nil }), &lambda_expr[2])
         } else {
             panic!("Expected list")
         }
@@ -219,7 +219,7 @@ mod test {
         if let Branch(args, 1, 1, Some(t)) = &x[0] {
             assert_eq!(4, args.len());
             match t.as_ref() {
-                Leaf(t) if t.value() == "e".to_string() => (),
+                Leaf(t) if t.value() == Symbol("e".to_string()) => (),
                 _ => panic!(),
             }
             match &args[0] {

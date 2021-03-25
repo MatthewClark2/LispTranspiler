@@ -49,6 +49,7 @@ pub enum TokenValue {
     True,
     False,
     Cons,
+    Nil,
 }
 
 // NOTE(matthew-c21): Consider adding the offending text to this as well.
@@ -350,7 +351,11 @@ fn keyword(input: &str) -> IResult<&str, TokenValue> {
 fn symbol(input: &str) -> IResult<&str, TokenValue> {
     let r = symbol_content(input)?;
 
-    Ok((r.0, TokenValue::Symbol(r.1)))
+    Ok((r.0, if r.1.as_str() == "nil" {
+       TokenValue::Nil
+    } else {
+        TokenValue::Symbol(r.1)
+    }))
 }
 
 fn string(input: &str) -> IResult<&str, TokenValue> {
@@ -659,7 +664,6 @@ mod tests {
     }
 
     #[test]
-    #[ignore]
     fn nil() {
         assert_eq!(start("nil"), Ok(vec![Token { line: 1, value: Nil }]))
     }
