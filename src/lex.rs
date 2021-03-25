@@ -657,4 +657,10 @@ mod tests {
         assert_eq!(start(". (1 2 . 3) (a b .zs)"), Err(LexError{ line: 1, msg: "Unable to match `.zs` to a token value.".to_string()}));
         assert_eq!(start(". (1 2 . 3) (a b .3)"), Err(LexError{ line: 1, msg: "Unable to match `.3` to a token value.".to_string()}));
     }
+
+    #[test]
+    #[ignore]
+    fn nil() {
+        assert_eq!(start("nil"), Ok(vec![Token { line: 1, value: Nil }]))
+    }
 }

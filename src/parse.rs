@@ -3,53 +3,7 @@ use crate::lex::{Token, TokenValue};
 #[derive(Debug, PartialEq, Clone)]
 pub enum ParseTree {
     Leaf(Token),
-    Branch(Vec<ParseTree>, u32, u32),
-}
-
-impl ParseTree {
-    pub fn to_pretty_string(&self) -> String {
-        self.pretty_string_aux(0)
-    }
-
-    fn pretty_string_aux(&self, indent_level: u32) -> String {
-        let mut output = String::new();
-
-        match self {
-            ParseTree::Leaf(t) => {
-                Self::add_with_indent(
-                    &mut output,
-                    format!("Leaf: {:?}", t).as_str(),
-                    indent_level,
-                    false,
-                );
-            }
-            ParseTree::Branch(vals, _start, _stop) => {
-                Self::add_with_indent(&mut output, "List: [", indent_level, true);
-
-                vals.iter()
-                    .map(|x| x.pretty_string_aux(indent_level + 1))
-                    .for_each(|s| {
-                        Self::add_with_indent(&mut output, s.as_str(), indent_level + 1, true)
-                    });
-
-                Self::add_with_indent(&mut output, "]", indent_level, false);
-            }
-        }
-
-        output
-    }
-
-    fn add_with_indent(output: &mut String, content: &str, indent_level: u32, add_newline: bool) {
-        for _ in 0..indent_level {
-            output.push_str("\t");
-        }
-
-        output.push_str(content);
-
-        if add_newline {
-            output.push('\n');
-        }
-    }
+    Branch(Vec<ParseTree>, u32, u32, Option<Box<ParseTree>>),
 }
 
 pub fn parse(tokens: &Vec<Token>) -> Result<Vec<ParseTree>, (u32, String)> {
@@ -81,11 +35,21 @@ fn list(tokens: &[Token], start_line: u32) -> Result<(ParseTree, &[Token]), (u32
     let mut t = &tokens[..];
 
     while !t.is_empty() {
-        if t[0].value() == TokenValue::Close {
-            return Ok((ParseTree::Branch(vals, start_line, t[0].line()), &t[1..]));
-        }
+        let r = if t[0].value() == TokenValue::Close {
+            return Ok((ParseTree::Branch(vals, start_line, t[0].line(), None), &t[1..]));
+        } else if t[0].value() == TokenValue::Cons {
+            // Handle it.
+            let (consed, rest) = statement(t)?;
+            if rest.is_empty() {
+                return Err((t[0].line(), String::from("Expected EOF.")))
+            } else if rest[0].value() != TokenValue::Close {
+                return Err((t[0].line(), String::from("Expected end of list following cons.")));
+            }
+            (consed, rest)
+        } else {
+            statement(t)?
+        };
 
-        let r = statement(t)?;
         t = r.1;
         vals.push(r.0);
     }
@@ -96,7 +60,7 @@ fn list(tokens: &[Token], start_line: u32) -> Result<(ParseTree, &[Token]), (u32
 #[cfg(test)]
 mod test {
     use crate::lex::{start, Token, TokenValue::*};
-    use crate::parse::parse;
+    use crate::parse::{parse, ParseTree};
     use crate::parse::ParseTree::{Branch, Leaf};
 
     #[test]
@@ -116,7 +80,7 @@ mod test {
         let x = parse(&tokens).unwrap();
 
         assert_eq!(x.len(), 1);
-        assert_eq!(x[0], Branch(Vec::new(), 0, 0));
+        assert_eq!(x[0], Branch(Vec::new(), 0, 0, None));
     }
 
     #[test]
@@ -134,7 +98,7 @@ mod test {
         assert_eq!(x.len(), 1);
 
         match &x[0] {
-            Branch(x, 0, 0) => {
+            Branch(x, 0, 0, None) => {
                 assert_eq!(x.len(), 3);
                 assert_eq!(x[0], Leaf(Token::from(Symbol("+".to_string()))));
                 assert_eq!(x[1], Leaf(Token::from(Int(16))));
@@ -162,10 +126,10 @@ mod test {
         assert_eq!(x.len(), 1);
 
         match &x[0] {
-            Branch(x, 0, 0) => {
+            Branch(x, 0, 0, None) => {
                 assert_eq!(x.len(), 2);
-                assert_eq!(x[0], Branch(Vec::new(), 0, 0));
-                assert_eq!(x[1], Branch(vec!(Branch(Vec::new(), 0, 0)), 0, 0));
+                assert_eq!(x[0], Branch(Vec::new(), 0, 0, None));
+                assert_eq!(x[1], Branch(vec!(Branch(Vec::new(), 0, 0, None)), 0, 0, None));
             }
             _ => assert!(false),
         }
@@ -181,14 +145,14 @@ mod test {
         assert_eq!(x[1], Leaf(tokens[1].clone()));
         assert_eq!(x[2], Leaf(tokens[2].clone()));
         match &x[3] {
-            Branch(x, 1, 1) => {
+            Branch(x, 1, 1, None) => {
                 assert_eq!(x.len(), 4);
                 assert_eq!(x[0], Leaf(tokens[4].clone()));
                 assert_eq!(x[1], Leaf(tokens[5].clone()));
                 assert_eq!(x[2], Leaf(tokens[6].clone()));
 
                 match &x[3] {
-                    Branch(x, 1, 1) => {
+                    Branch(x, 1, 1, None) => {
                         assert_eq!(x.len(), 3);
 
                         assert_eq!(x[0], Leaf(tokens[8].clone()));
@@ -202,7 +166,7 @@ mod test {
         }
 
         match &x[4] {
-            Branch(x, 1, 1) => {
+            Branch(x, 1, 1, None) => {
                 assert_eq!(x.len(), 0);
             }
             _ => panic!(),
@@ -218,5 +182,76 @@ mod test {
             Token::from(Close),
         ])
         .unwrap();
+    }
+
+    #[test]
+    fn cons_alone() {
+        let tokens = start("(. zs)").unwrap();
+        let x = parse(&tokens).unwrap();
+
+        assert_eq!(1, x.len());
+        assert_eq!(Branch(Vec::new(), 1, 1, Some(Box::new(Leaf(Token { line: 1, value: Symbol("zs".to_string()) })))), x[0])
+    }
+
+    #[test]
+    fn empty_lambda() {
+        let tokens = start("(lambda () nil)").unwrap();
+        let x = parse(&tokens).unwrap();
+        assert_eq!(1, x.len());
+
+        if let Branch(lambda_expr, 1, 1, None) = &x[0] {
+            assert_eq!(3, lambda_expr.len());
+            assert_eq!(Leaf(Token { line: 1, value: Symbol("lambda".to_string()) }), &lambda_expr[0]);
+            assert_eq!(Branch(Vec::new(), 1, 1, None), &lambda_expr[1]);
+            assert_eq!(Leaf(Token { line: 1, value: Nil }), &lambda_expr[2])
+        } else {
+            panic!("Expected list")
+        }
+    }
+
+    #[test]
+    fn vararg_list() {
+        let tokens = start("(a b c d . e)").unwrap();
+        let x = parse(&tokens).unwrap();
+
+        assert_eq!(1, x.len());
+
+        if let Branch(args, 1, 1, Some(t)) = &x[0] {
+            assert_eq!(4, args.len());
+            match t.as_ref() {
+                Leaf(t) if t.value() == "e".to_string() => (),
+                _ => panic!(),
+            }
+            match &args[0] {
+                Leaf(t) if t.value() == Symbol("a".to_string()) => (),
+                _ => panic!(),
+            }
+            match &args[1] {
+                Leaf(t) if t.value() == Symbol("b".to_string()) => (),
+                _ => panic!(),
+            }
+            match &args[2] {
+                Leaf(t) if t.value() == Symbol("c".to_string()) => (),
+                _ => panic!(),
+            }
+            match &args[3] {
+                Leaf(t) if t.value() == Symbol("d".to_string()) => (),
+                _ => panic!(),
+            }
+        }
+    }
+
+    #[test]
+    #[should_panic]
+    fn continued_vararg_list() {
+        let tokens = start("(a b c . d e)").unwrap();
+        let x = parse(&tokens).unwrap();
+    }
+
+    #[test]
+    #[should_panic]
+    fn non_continued_vararg_list() {
+        let tokens = start("(a b c .)").unwrap();
+        let x = parse(&tokens).unwrap();
     }
 }

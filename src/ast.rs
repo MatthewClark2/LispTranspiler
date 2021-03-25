@@ -50,7 +50,7 @@ impl TryFrom<&ParseTree> for ASTNode {
     fn try_from(tree: &ParseTree) -> Result<Self, Self::Error> {
         match &tree {
             ParseTree::Leaf(t) => Ok(Self::from(t.clone())),
-            ParseTree::Branch(elems, start, _stop) => {
+            ParseTree::Branch(elems, start, _stop, _) => {
                 if elems.len() == 0 {
                     return Err((
                         *start,
@@ -149,7 +149,7 @@ impl TryFrom<&ParseTree> for ASTNode {
                             String::from("Symbols are the only literal value that may be invoked."),
                         )),
                     },
-                    ParseTree::Branch(_elems, start, _stop) => {
+                    ParseTree::Branch(_elems, start, _stop, _) => {
                         // TODO(matthew-c21): Later, it should be possible to invoke lambda special
                         //  forms as well as functions that may return functions.
                         Err((

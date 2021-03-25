@@ -30,7 +30,7 @@ fn examine(program: &str) -> Result<(), (u32, String)> {
     let mut output = String::new();
 
     for tree in parse_tree.as_slice() {
-        output.push_str(tree.to_pretty_string().as_str());
+        output.push_str(format!("{:?}", parse_tree).as_str());
         output.push('\n');
         output.push('\n');
     }
