@@ -1,4 +1,5 @@
 use crate::lex::{Token, TokenValue};
+use crate::parse::ParseTree::Branch;
 
 #[derive(Debug, PartialEq, Clone)]
 pub enum ParseTree {
@@ -35,20 +36,20 @@ fn list(tokens: &[Token], start_line: u32) -> Result<(ParseTree, &[Token]), (u32
     let mut t = &tokens[..];
 
     while !t.is_empty() {
-        let r = if t[0].value() == TokenValue::Close {
+        if t[0].value() == TokenValue::Close {
             return Ok((ParseTree::Branch(vals, start_line, t[0].line(), None), &t[1..]));
         } else if t[0].value() == TokenValue::Cons {
             // Handle it.
-            let (consed, rest) = statement(t)?;
+            let (consed, rest) = statement(&t[1..])?;
             if rest.is_empty() {
-                return Err((t[0].line(), String::from("Expected EOF.")))
+                return Err((t[0].line(), String::from("Expected EOF.")));
             } else if rest[0].value() != TokenValue::Close {
                 return Err((t[0].line(), String::from("Expected end of list following cons.")));
             }
-            (consed, rest)
-        } else {
-            statement(t)?
-        };
+            return Ok((Branch(vals, start_line, rest[0].line(), Some(Box::new(consed))), &rest[1..]));
+        }
+
+        let r = statement(t)?;
 
         t = r.1;
         vals.push(r.0);
@@ -181,7 +182,7 @@ mod test {
             Token::from(Open),
             Token::from(Close),
         ])
-        .unwrap();
+            .unwrap();
     }
 
     #[test]
