@@ -1,4 +1,3 @@
-use crate::ast::Scope::Global;
 use crate::ast::{ASTNode, Statement::*, SymbolTable, Value::*};
 use crate::lex::TokenValue;
 
@@ -82,7 +81,7 @@ impl Transpiler {
                 }
             }
             ASTNode::Value(Call(callee, args)) => {
-                 let arglist = self.sym_table.generate("arglist", Global);
+                 let arglist = self.sym_table.generate("arglist");
 
                             output.push(format!("struct LispDatum* {}[{}];\n", arglist, args.len()));
 

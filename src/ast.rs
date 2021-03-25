@@ -1,4 +1,4 @@
-use crate::ast::{Scope::Global, Statement::*, Value::*};
+use crate::ast::{Statement::*, Value::*};
 use crate::lex::{Token, TokenValue::*};
 use crate::parse::ParseTree;
 use json;
@@ -236,8 +236,6 @@ pub enum Value {
 
 #[derive(Clone, Debug)]
 pub enum Statement {
-    // name, value, scope, is_redefinition
-    // Definition(String, Value, Scope, bool),
     Definition(String, Value),
     Redefinition(String, Value),
     Declaration(String),
@@ -338,7 +336,7 @@ impl ASTVisitor<Vec<ASTNode>> for FunctionUnfurl {
                             }
 
                             // Create a new definition, then add it to the end of the list.
-                            let s = sym_table.generate("function_unwrap", Scope::Global);
+                            let s = sym_table.generate("function_unwrap");
 
                             // This does lose information, but the code should be syntactically
                             //  correct at this stage, and the information isn't kept for runtime
@@ -398,7 +396,7 @@ impl ASTVisitor<Vec<ASTNode>> for ConditionUnroll {
         match ast {
             // Check for nested conditions in top level ones.
             ASTNode::Value(Condition(c, t, f)) => {
-                let output_name = sym_table.generate("conditional_value", Scope::Global);
+                let output_name = sym_table.generate("conditional_value");
                 output.push(ASTNode::Statement(Declaration(output_name.clone())));
 
                 iftrue = self.try_visit(&ASTNode::Value(*t.clone()), sym_table)?;
@@ -512,7 +510,7 @@ impl ASTVisitor<ASTNode> for SymbolValidation {
                 let value = self.try_visit(&ASTNode::Value(value.clone()), sym_table)?;
 
                 if !sym_table.contains(name.as_str()) {
-                    sym_table.register(name.as_str(), Global);
+                    sym_table.register(name.as_str());
                     Ok(ASTNode::Statement(Definition(
                         name.clone(),
                         value.as_value().to_owned(),
@@ -546,7 +544,7 @@ impl ASTVisitor<ASTNode> for SymbolValidation {
                     ))
                 } else {
                     // Register it.
-                    sym_table.register(name.as_str(), Global);
+                    sym_table.register(name.as_str());
                     Ok(ast.clone())
                 }
             }
@@ -609,7 +607,7 @@ impl ASTVisitor<ASTNode> for SymbolValidation {
 #[derive(Clone)]
 pub struct SymbolTable {
     natives: HashMap<String, String>,
-    defs: HashMap<String, SymbolTableEntry>,
+    defs: HashMap<String, String>,
     factories: HashMap<String, String>,
     gensym: Gensym,
 }
@@ -617,18 +615,18 @@ pub struct SymbolTable {
 impl SymbolTable {
     /// Strictly used for creating new variable names. Does not actually assign them within the
     /// table.
-    pub fn generate(&mut self, base_name: &str, _scope: Scope) -> String {
+    pub fn generate(&mut self, base_name: &str) -> String {
         self.gensym.gen(base_name, None)
     }
 
     // Adds a new name to the table, generating a SymbolTableEntry containing the corresponding C
     // variable name.
-    fn register(&mut self, name: &str, scope: Scope) {
+    fn register(&mut self, name: &str) {
         let key = name.to_string();
         let c_name = Gensym::convert(&key);
 
         if !self.defs.contains_key(&key) {
-            self.defs.insert(key, SymbolTableEntry::from(c_name, scope));
+            self.defs.insert(key, c_name);
         }
     }
 
@@ -649,7 +647,7 @@ impl SymbolTable {
         if self.natives.contains_key(name) {
             self.natives.get(name)
         } else {
-            self.defs.get(name).map(|n| n.c_name())
+            self.defs.get(name)
         }
     }
 
@@ -718,11 +716,6 @@ impl SymbolTable {
 
         let defs = Self::json_to_map(&obj, "variables");
 
-        let defs = defs
-            .iter()
-            .map(|(k, v)| (k.clone(), SymbolTableEntry::from(v.clone(), Global)))
-            .collect();
-
         Self {
             defs,
             natives: Self::json_to_map(&obj, "functions"),
@@ -730,38 +723,6 @@ impl SymbolTable {
             gensym: Gensym::new(),
         }
     }
-}
-
-#[derive(Clone)]
-struct SymbolTableEntry {
-    c_name: String,
-    scope: Scope,
-}
-
-impl SymbolTableEntry {
-    fn from(c_name: String, scope: Scope) -> Self {
-        Self { c_name, scope }
-    }
-
-    fn c_name(&self) -> &String {
-        &self.c_name
-    }
-
-    fn scope(&self) -> &Scope {
-        &self.scope
-    }
-}
-
-#[derive(Clone)]
-pub enum Scope {
-    /// File global scoping. Available in all subsequent code, as well as in previously defined functions.
-    Global,
-
-    /// Local variable, such as that in a `let` expression. Gets an associated tag to match it with.
-    Local(String),
-
-    /// Function parameters.
-    Function(String),
 }
 
 #[cfg(test)]
