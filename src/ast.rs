@@ -1229,4 +1229,28 @@ mod ast_tests {
             panic!()
         }
     }
+
+    #[test]
+    fn no_cons_in_define() {
+        assert!(from_line("(define x . 10)").is_err());
+        assert!(from_line("(define x 10 . 11)").is_err());
+    }
+
+    #[test]
+    fn no_cons_in_if() {
+        assert!(from_line("(if #t 1 2 . 3)").is_err());
+        assert!(from_line("(if #f 1 . 2)").is_err());
+    }
+
+    #[test]
+    fn no_cons_in_call() {
+        assert!(from_line("(format #f . #t)").is_err());
+        assert!(from_line("(call f a . b)").is_err());
+    }
+
+    #[test]
+    fn no_cons_in_lambda() {
+        assert!(from_line("(lambda () . 1)").is_err());
+        assert!(from_line("(lambda (a b) a . b)").is_err());
+    }
 }
