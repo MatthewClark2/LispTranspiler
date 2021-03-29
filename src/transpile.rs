@@ -81,19 +81,18 @@ impl Transpiler {
                 }
             }
             ASTNode::Value(Call(callee, args)) => {
-                 let arglist = self.sym_table.generate("arglist");
+                let arglist = self.sym_table.generate("arglist");
 
-                            output.push(format!("struct LispDatum* {}[{}];\n", arglist, args.len()));
+                output.push(format!("struct LispDatum* {}[{}];\n", arglist, args.len()));
 
-                            for (i, arg) in args.iter().enumerate() {
-                                let mut prefix = self.translate_node(&ASTNode::Value(arg.clone()));
-                                let line = format!("{}[{}] = {};\n", arglist, i, prefix.pop().unwrap());
-                                output.append(&mut prefix);
-                                output.push(line);
-                            }
+                for (i, arg) in args.iter().enumerate() {
+                    let mut prefix = self.translate_node(&ASTNode::Value(arg.clone()));
+                    let line = format!("{}[{}] = {};\n", arglist, i, prefix.pop().unwrap());
+                    output.append(&mut prefix);
+                    output.push(line);
+                }
 
-                            output.push(format!("{}({}, {})", self.sym_table.get(callee.as_str()).unwrap(), arglist, args.len()))
-
+                output.push(format!("{}({}, {})", self.sym_table.get(callee.as_str()).unwrap(), arglist, args.len()))
             }
             ASTNode::Value(Condition(c, t, f)) => {
                 panic!("Conditions should have been upgraded to expanded conditions before this step. Contact the developer.")
@@ -123,7 +122,7 @@ impl Transpiler {
             ASTNode::Statement(ExpandedCondition(c, t, f)) => {
                 let mut c = self.translate_node(&ASTNode::Value(c.clone()));
                 let l = c.len();
-                output.extend_from_slice(&mut c[..l-1]);
+                output.extend_from_slice(&mut c[..l - 1]);
                 output.push(format!("if ({}) {{", c.last().unwrap()));
 
                 for v in t {
