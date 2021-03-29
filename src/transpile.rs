@@ -94,7 +94,7 @@ impl Transpiler {
 
                 output.push(format!("{}({}, {})", self.sym_table.get(callee.as_str()).unwrap(), arglist, args.len()))
             }
-            ASTNode::Value(Condition(c, t, f)) => {
+            ASTNode::Value(Condition(..)) => {
                 panic!("Conditions should have been upgraded to expanded conditions before this step. Contact the developer.")
             }
             ASTNode::Value(Lambda(..)) => {

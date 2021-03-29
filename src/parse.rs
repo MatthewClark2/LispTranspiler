@@ -70,8 +70,8 @@ fn list(tokens: &[Token], start_line: u32) -> Result<(ParseTree, &[Token]), (u32
 #[cfg(test)]
 mod test {
     use crate::lex::{start, Token, TokenValue::*};
-    use crate::parse::ParseTree::{Branch, Leaf};
-    use crate::parse::{parse, ParseTree};
+    use crate::parse::ParseTree::*;
+    use crate::parse::parse;
 
     #[test]
     fn single_terminal() {
@@ -281,13 +281,13 @@ mod test {
     #[should_panic]
     fn continued_vararg_list() {
         let tokens = start("(a b c . d e)").unwrap();
-        let x = parse(&tokens).unwrap();
+        parse(&tokens).unwrap();
     }
 
     #[test]
     #[should_panic]
     fn non_continued_vararg_list() {
         let tokens = start("(a b c .)").unwrap();
-        let x = parse(&tokens).unwrap();
+        parse(&tokens).unwrap();
     }
 }

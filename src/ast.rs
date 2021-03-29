@@ -50,7 +50,7 @@ impl TryFrom<&ParseTree> for ASTNode {
     fn try_from(tree: &ParseTree) -> Result<Self, Self::Error> {
         match &tree {
             ParseTree::Leaf(t) => Ok(Self::from(t.clone())),
-            ParseTree::Branch(elems, start, _stop, _) => {
+            ParseTree::Branch(elems, start, _stop, None) => {
                 if elems.len() == 0 {
                     return Err((
                         *start,
@@ -213,6 +213,7 @@ impl TryFrom<&ParseTree> for ASTNode {
                     )),
                 };
             }
+            ParseTree::Branch(_, start, _, _) => Err((*start, String::from("Unexpected syntax token `.`.")))
         }
     }
 }
@@ -757,9 +758,6 @@ mod test_utils {
 mod visitor_tests {
     use crate::ast::test_utils::force_from;
     use crate::ast::*;
-    use crate::lex::TokenValue::*;
-    use crate::lex::{start, TokenValue};
-    use crate::parse::parse;
 
     #[test]
     fn basic_call_unroll() {
@@ -886,8 +884,6 @@ mod visitor_tests {
 mod ast_tests {
     use crate::ast::test_utils::*;
     use crate::ast::*;
-    use crate::lex::TokenValue::*;
-    use std::thread::panicking;
 
     #[test]
     fn from_literal() {
