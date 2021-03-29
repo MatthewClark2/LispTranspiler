@@ -10,29 +10,35 @@ use std::fs;
 pub enum ASTNode {
     Value(Value),
     Statement(Statement),
+    RawLambda(Vec<String>, Option<String>, Vec<ASTNode>),
 }
 
 impl ASTNode {
     fn as_value(&self) -> &Value {
         match self {
             ASTNode::Value(v) => v,
-            ASTNode::Statement(_) => panic!("Illegal conversion to value."),
-        }
-    }
-
-    fn as_statement(&self) -> &Statement {
-        match self {
-            ASTNode::Statement(s) => s,
-            ASTNode::Value(_) => panic!("Illegal conversion to value."),
+            _ => panic!("Illegal conversion to value."),
         }
     }
 }
 
 pub fn construct_ast(parse_tree: &Vec<ParseTree>) -> Result<Vec<ASTNode>, (u32, String)> {
     let mut ast = Vec::new();
+    let mut scope_count = 0;
 
     for tree in parse_tree {
-        ast.push(ASTNode::try_from(tree)?);
+        ast.push(match ASTNode::try_from(tree)? {
+            ASTNode::RawLambda(args, vararg, body) => {
+                scope_count += 1;
+                ASTNode::Value(Lambda(
+                    args.to_owned(),
+                    vararg.to_owned(),
+                    body.to_owned(),
+                    scope_count,
+                ))
+            }
+            x => x,
+        });
     }
 
     Ok(ast)
@@ -143,10 +149,12 @@ impl TryFrom<&ParseTree> for ASTNode {
                                             if let Symbol(n) = t.value() {
                                                 vararg = Some(n.clone());
                                             } else {
-                                                return Err((t.line(), "Expected a symbol to be used as a vararg.".to_string()))
+                                                return Err((t.line(), "Expected a symbol to be used as a vararg.".to_string()));
                                             }
                                         }
-                                        ParseTree::Branch(_, start, _, _) => return Err((*start, "All elements in first argument to `lambda` special form should be symbols.".to_string()))
+                                        ParseTree::Branch(_, start, _, _) => {
+                                            return Err((*start, "All elements in first argument to `lambda` special form should be symbols.".to_string()))
+                                        }
                                     }
                                 }
                             }
@@ -155,7 +163,7 @@ impl TryFrom<&ParseTree> for ASTNode {
                                     *start,
                                     "Expected arglist in second position of `lambda` special form."
                                         .to_string(),
-                                ))
+                                ));
                             }
                         }
 
@@ -169,7 +177,7 @@ impl TryFrom<&ParseTree> for ASTNode {
                             ));
                         }
 
-                        Ok(ASTNode::Value(Lambda(names, vararg, vec![body])))
+                        Ok(ASTNode::RawLambda(names, vararg, vec![body]))
                     }
                     ParseTree::Leaf(t) => match &t {
                         Token {
@@ -196,7 +204,9 @@ impl TryFrom<&ParseTree> for ASTNode {
                             for arg in args {
                                 match arg {
                                     Ok(ASTNode::Value(v)) => (values.push(v.clone())),
-                                    Ok(_) => return Err((*line, format!("Expected a value to be passed as an argument. Found: {:?}.", &elems[0]).to_string())),
+                                    Ok(_) => {
+                                        return Err((*line, format!("Expected a value to be passed as an argument. Found: {:?}.", &elems[0]).to_string()))
+                                    },
                                     _ => return arg,
                                 }
                             }
@@ -213,7 +223,9 @@ impl TryFrom<&ParseTree> for ASTNode {
                     )),
                 };
             }
-            ParseTree::Branch(_, start, _, _) => Err((*start, String::from("Unexpected syntax token `.`.")))
+            ParseTree::Branch(_, start, _, _) => {
+                Err((*start, String::from("Unexpected syntax token `.`.")))
+            }
         }
     }
 }
@@ -226,10 +238,10 @@ pub enum Value {
     // obviously callee and arguments
     Call(String, Vec<Value>),
 
-    // required_args, vararg, body
+    // required_args, vararg, body, scope ID
     // The body should be a single element on creation, but may be expanded as a result of other
     // visitors.
-    Lambda(Vec<String>, Option<String>, Vec<ASTNode>),
+    Lambda(Vec<String>, Option<String>, Vec<ASTNode>, u32),
 
     // condition, value if true, value if false
     Condition(Box<Value>, Box<Value>, Box<Value>),
@@ -488,6 +500,7 @@ impl ASTVisitor<ASTNode> for SymbolValidation {
         sym_table: &mut SymbolTable,
     ) -> Result<ASTNode, (u32, String)> {
         match ast {
+            ASTNode::RawLambda(..) => panic!(),
             ASTNode::Statement(Statement::ExpandedCondition(v, t, f)) => {
                 let v = self.try_visit(&ASTNode::Value(v.clone()), sym_table)?;
                 let mut mt = Vec::new();
@@ -582,7 +595,7 @@ impl ASTVisitor<ASTNode> for SymbolValidation {
 
                 Ok(ast.clone())
             }
-            ASTNode::Value(Lambda(args, varargs, body)) => {
+            ASTNode::Value(Lambda(args, varargs, body, scope)) => {
                 let body: Vec<Result<ASTNode, (u32, String)>> =
                     body.iter().map(|n| self.try_visit(n, sym_table)).collect();
 
@@ -599,6 +612,7 @@ impl ASTVisitor<ASTNode> for SymbolValidation {
                     args.clone(),
                     varargs.clone(),
                     new_body,
+                    *scope
                 )))
             }
         }
@@ -733,30 +747,24 @@ mod test_utils {
     use crate::parse::parse;
 
     pub fn force_from(input: &str) -> Vec<ASTNode> {
-        parse(&start(input).unwrap())
-            .unwrap()
-            .iter()
-            .map(ASTNode::try_from)
-            .map(Result::unwrap)
-            .collect()
+        let parse_tree = parse(&start(input).unwrap())
+            .unwrap();
+
+        construct_ast(&parse_tree).unwrap()
     }
 
     pub fn from_line(input: &str) -> Result<ASTNode, (u32, String)> {
-        let mut ast: Vec<Result<ASTNode, (u32, String)>> = parse(&start(input).unwrap())
-            .unwrap()
-            .iter()
-            .map(ASTNode::try_from)
-            .collect();
+        let mut ast = construct_ast(&parse(&start(input).unwrap()).unwrap())?;
 
         assert_eq!(1, ast.len());
 
-        ast.remove(0)
+        Ok(ast.remove(0))
     }
 }
 
 #[cfg(test)]
 mod visitor_tests {
-    use crate::ast::test_utils::force_from;
+    use crate::ast::test_utils::{force_from, from_line};
     use crate::ast::*;
 
     #[test]
@@ -877,6 +885,36 @@ mod visitor_tests {
         let node = sv.try_visit(&ast[0], &mut st);
 
         assert!(node.is_ok());
+    }
+
+    #[test]
+    fn call_expansion_works_on_lambda() {
+        let fu = FunctionUnfurl;
+        let lambda = from_line("(lambda () (f (y)))").unwrap();
+        let expansion = fu.try_visit(&lambda, &mut SymbolTable::dummy()).unwrap();
+
+        assert_eq!(1, expansion.len());
+
+        if let Lambda(_, _, body, _) = &expansion[0].as_value() {
+            assert_eq!(2, body.len());
+        } else {
+            panic!("Inside of lambda not expanded.")
+        }
+    }
+
+    #[test]
+    fn conditional_expansion_works_on_lambda() {
+        let ce = ConditionUnroll;
+        let lambda = from_line("(lambda () (if (if x a b) x y))").unwrap();
+        let expansion = ce.try_visit(&lambda, &mut SymbolTable::dummy()).unwrap();
+
+        assert_eq!(1, expansion.len());
+
+        if let Lambda(_, _, body, _) = &expansion[0].as_value() {
+            assert_eq!(2, body.len());
+        } else {
+            panic!("Inside of lambda not expanded.")
+        }
     }
 }
 
@@ -1103,7 +1141,7 @@ mod ast_tests {
         assert_eq!(1, ast.len());
 
         match &ast[0] {
-            ASTNode::Value(Lambda(args, None, body)) => {
+            ASTNode::Value(Lambda(args, None, body, 1)) => {
                 assert_eq!(2, args.len());
                 assert_eq!("x", args[0].as_str());
                 assert_eq!("y", args[1].as_str());
@@ -1130,12 +1168,26 @@ mod ast_tests {
     }
 
     #[test]
+    fn from_lambdas() {
+        let lambdas = force_from("(lambda () nil) (lambda () nil) (lambda() nil)");
+        assert_eq!(3, lambdas.len());
+
+        for (i, lambda) in lambdas.iter().enumerate() {
+            if let ASTNode::Value(Lambda(_, _, _, j)) = lambda {
+                assert_eq!(i as u32 + 1, *j);
+            } else {
+                panic!()
+            }
+        }
+    }
+
+    #[test]
     fn varargs_lambda() {
         let ast = force_from("(lambda (. zs) zs)");
         assert_eq!(1, ast.len());
 
         match &ast[0] {
-            ASTNode::Value(Lambda(args, Some(v), _)) => {
+            ASTNode::Value(Lambda(args, Some(v), _, 1)) => {
                 assert!(args.is_empty());
                 assert_eq!("zs", v.as_str());
             }
@@ -1149,7 +1201,7 @@ mod ast_tests {
         assert_eq!(1, ast.len());
 
         match &ast[0] {
-            ASTNode::Value(Lambda(args, None, body)) if args.is_empty() => match &body[0] {
+            ASTNode::Value(Lambda(args, None, body, 1)) if args.is_empty() => match &body[0] {
                 ASTNode::Value(Literal(t)) => assert_eq!(Keyword("empty".to_string()), t.value()),
                 _ => panic!(),
             },

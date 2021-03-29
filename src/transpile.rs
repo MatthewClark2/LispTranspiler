@@ -48,6 +48,7 @@ impl Transpiler {
         let mut output = Vec::new();
 
         match node {
+            ASTNode::RawLambda(..) => panic!(),
             ASTNode::Value(Literal(t)) => {
                 match t.value() {
                     TokenValue::Int(x) => {
