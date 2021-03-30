@@ -612,7 +612,7 @@ impl ASTVisitor<ASTNode> for SymbolValidation {
                     args.clone(),
                     varargs.clone(),
                     new_body,
-                    *scope
+                    *scope,
                 )))
             }
         }
@@ -747,8 +747,7 @@ mod test_utils {
     use crate::parse::parse;
 
     pub fn force_from(input: &str) -> Vec<ASTNode> {
-        let parse_tree = parse(&start(input).unwrap())
-            .unwrap();
+        let parse_tree = parse(&start(input).unwrap()).unwrap();
 
         construct_ast(&parse_tree).unwrap()
     }
@@ -948,6 +947,21 @@ mod visitor_tests {
 
         let ast = from_line("(lambda (a b) c)").unwrap();
         assert!(s.try_visit(&ast, &mut SymbolTable::dummy()).is_err())
+    }
+
+    #[test]
+    fn function_unroll_in_condition() {
+        let ast = force_from("(if (x (y)) a b)");
+        assert_eq!(1, ast.len());
+
+        let u = FunctionUnfurl;
+        let ast: Vec<ASTNode> = ast
+            .iter()
+            .map(|n| u.visit(n, &mut SymbolTable::dummy()))
+            .flatten()
+            .collect();
+
+        assert_eq!(2, ast.len());
     }
 }
 
