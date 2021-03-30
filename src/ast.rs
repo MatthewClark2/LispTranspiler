@@ -916,6 +916,39 @@ mod visitor_tests {
             panic!("Inside of lambda not expanded.")
         }
     }
+
+    #[test]
+    fn symbol_validation_in_lambda() {
+        let s = SymbolValidation;
+
+        let ast = from_line("(lambda (x) x)").unwrap();
+        s.visit(&ast, &mut SymbolTable::dummy());
+
+        let mut t = SymbolTable::dummy();
+        let ast = force_from("(define x 10) (lambda () x)");
+        s.visit(&ast[0], &mut t);
+        s.visit(&ast[1], &mut t);
+    }
+
+    #[test]
+    fn symbols_invalid_outside_lambda() {
+        let s = SymbolValidation;
+        let mut t = SymbolTable::dummy();
+
+        let ast = force_from("(lambda (x) x) x");
+
+        s.visit(&ast[0], &mut t);
+
+        assert!(s.try_visit(&ast[1], &mut t).is_err());
+    }
+
+    #[test]
+    fn undeclared_var_in_lambda() {
+        let s = SymbolValidation;
+
+        let ast = from_line("(lambda (a b) c)").unwrap();
+        assert!(s.try_visit(&ast, &mut SymbolTable::dummy()).is_err())
+    }
 }
 
 #[cfg(test)]
