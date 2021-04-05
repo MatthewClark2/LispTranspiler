@@ -28,9 +28,10 @@ impl Transpiler {
     /// functions, conditions, and lambdas have been unrolled.
     pub fn translate(&mut self, ast: Vec<ASTNode>) -> String {
         let mut output = String::from(Self::prefix());
+        let mut scope_ids = Vec::new();
 
         for node in &ast {
-            for line in self.translate_node(node) {
+            for line in self.translate_node(node, &mut scope_ids) {
                 output.push_str(line.as_str());
 
                 // This will make extraneous semicolons for forms that generate braces, such as
@@ -44,7 +45,7 @@ impl Transpiler {
         output
     }
 
-    fn translate_node(&mut self, node: &ASTNode) -> Vec<String> {
+    fn translate_node(&mut self, node: &ASTNode, scope_ids: &mut Vec<usize>) -> Vec<String> {
         let mut output = Vec::new();
 
         match node {
@@ -76,7 +77,7 @@ impl Transpiler {
                         output.push(format!("{}()", self.sym_table.get_factory("false")))
                     }
                     TokenValue::Symbol(s) => {
-                        output.push(self.sym_table.get(s.as_str()).unwrap().clone())
+                        output.push(self.sym_table.get(s.as_str(), Some(scope_ids.clone())).unwrap().clone())
                     }
                     _ => panic!("Encountered invalid token literal in AST. Contact the developer.")
                 }
@@ -87,13 +88,13 @@ impl Transpiler {
                 output.push(format!("struct LispDatum* {}[{}];\n", arglist, args.len()));
 
                 for (i, arg) in args.iter().enumerate() {
-                    let mut prefix = self.translate_node(&ASTNode::Value(arg.clone()));
+                    let mut prefix = self.translate_node(&ASTNode::Value(arg.clone()), scope_ids);
                     let line = format!("{}[{}] = {};\n", arglist, i, prefix.pop().unwrap());
                     output.append(&mut prefix);
                     output.push(line);
                 }
 
-                output.push(format!("{}({}, {})", self.sym_table.get(callee.as_str()).unwrap(), arglist, args.len()))
+                output.push(format!("{}({}, {})", self.sym_table.get(callee.as_str(), Some(scope_ids.clone())).unwrap(), arglist, args.len()))
             }
             ASTNode::Value(Condition(..)) => {
                 panic!("Conditions should have been upgraded to expanded conditions before this step. Contact the developer.")
@@ -102,38 +103,38 @@ impl Transpiler {
                 unimplemented!()
             }
             ASTNode::Statement(Declaration(name)) => {
-                output.push(format!("struct LispDatum* {}", self.sym_table.get(name.as_str()).unwrap()))
+                output.push(format!("struct LispDatum* {}", self.sym_table.get(name.as_str(), Some(scope_ids.clone())).unwrap()))
             }
             ASTNode::Statement(Definition(name, value)) => {
-                let mut value = self.translate_node(&ASTNode::Value(value.clone()));
+                let mut value = self.translate_node(&ASTNode::Value(value.clone()), scope_ids);
 
                 let v = value.pop().unwrap();
                 output.append(&mut value);
 
-                output.push(format!("struct LispDatum* {} = {}", self.sym_table.get(name.as_str()).unwrap(), v))
+                output.push(format!("struct LispDatum* {} = {}", self.sym_table.get(name.as_str(), Some(scope_ids.clone())).unwrap(), v))
             }
             ASTNode::Statement(Redefinition(name, value)) => {
-                let mut value = self.translate_node(&ASTNode::Value(value.clone()));
+                let mut value = self.translate_node(&ASTNode::Value(value.clone()), scope_ids);
 
                 let v = value.pop().unwrap();
                 output.append(&mut value);
 
-                output.push(format!("{} = {}", self.sym_table.get(name.as_str()).unwrap(), v))
+                output.push(format!("{} = {}", self.sym_table.get(name.as_str(), Some(scope_ids.clone())).unwrap(), v))
             }
             ASTNode::Statement(ExpandedCondition(c, t, f)) => {
-                let mut c = self.translate_node(&ASTNode::Value(c.clone()));
+                let mut c = self.translate_node(&ASTNode::Value(c.clone()), scope_ids);
                 let l = c.len();
                 output.extend_from_slice(&mut c[..l - 1]);
                 output.push(format!("if ({}) {{", c.last().unwrap()));
 
                 for v in t {
-                    output.append(&mut self.translate_node(v));
+                    output.append(&mut self.translate_node(v, scope_ids));
                 }
 
                 output.push(String::from("} else {"));
 
                 for v in f {
-                    output.append(&mut self.translate_node(v));
+                    output.append(&mut self.translate_node(v, scope_ids));
                 }
 
                 output.push(String::from("}"));

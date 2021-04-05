@@ -241,7 +241,7 @@ pub enum Value {
     // required_args, vararg, body, scope ID
     // The body should be a single element on creation, but may be expanded as a result of other
     // visitors.
-    Lambda(Vec<String>, Option<String>, Vec<ASTNode>, u32),
+    Lambda(Vec<String>, Option<String>, Vec<ASTNode>, usize),
 
     // condition, value if true, value if false
     Condition(Box<Value>, Box<Value>, Box<Value>),
@@ -335,7 +335,7 @@ impl ASTVisitor<Vec<ASTNode>> for FunctionUnfurl {
         let mut result = Vec::new();
 
         match ast {
-            ASTNode::Value(Call(_, args)) => {
+            ASTNode::Value(Call(callee, args)) => {
                 for arg in args {
                     match arg {
                         Call(_, _args) => {
@@ -363,14 +363,25 @@ impl ASTVisitor<Vec<ASTNode>> for FunctionUnfurl {
                         _ => mapping.push(arg.clone()), // It isn't a function call, so we don't deal with it here.
                     }
                 }
+
+                result.push(ASTNode::Value(Call(callee.clone(), mapping)))
+            }
+            ASTNode::Value(Lambda(args, vararg, body, scope_id)) => {
+                let mut new_body = Vec::new();
+
+                for line in body {
+                    new_body.append(&mut self.try_visit(line, sym_table)?)
+                }
+
+                result.push(ASTNode::Value(Lambda(args.clone(), vararg.clone(), new_body, *scope_id)));
+            }
+            ASTNode::Value(Condition(c, t, f)) => {
+                let mut cond = self.try_visit(&ASTNode::Value(c.as_ref().clone()), sym_table)?;
+                let c = cond.pop().unwrap();
+                result.append(&mut cond);
+                result.push(ASTNode::Value(Condition(Box::from(c.as_value().to_owned()), t.clone(), f.clone())));
             }
             _ => return Ok(vec![ast.clone()]),
-        }
-
-        // Finally, create a new function call based on the unrolled variant. The condition is
-        //  redundant, but it's cleaner than trying to get the information earlier.
-        if let ASTNode::Value(Call(callee, _)) = ast {
-            result.push(ASTNode::Value(Call(callee.clone(), mapping)))
         }
 
         Ok(result)
@@ -486,6 +497,16 @@ impl ASTVisitor<Vec<ASTNode>> for ConditionUnroll {
 
                 return Ok(output);
             }
+            // Condition in lambda body.
+            ASTNode::Value(Lambda(args, vararg, body, scope_id)) => {
+                let mut new_body = Vec::new();
+
+                for line in body {
+                    new_body.append(&mut self.try_visit(line, sym_table)?);
+                }
+
+                Ok(vec![ASTNode::Value(Lambda(args.clone(), vararg.clone(), new_body, *scope_id))])
+            }
             _ => Ok(vec![ast.clone()]),
         }
     }
@@ -493,25 +514,21 @@ impl ASTVisitor<Vec<ASTNode>> for ConditionUnroll {
 
 pub struct SymbolValidation;
 
-impl ASTVisitor<ASTNode> for SymbolValidation {
-    fn try_visit(
-        &self,
-        ast: &ASTNode,
-        sym_table: &mut SymbolTable,
-    ) -> Result<ASTNode, (u32, String)> {
+impl SymbolValidation {
+    fn try_visit_aux(&self, ast: &ASTNode, sym_table: &mut SymbolTable, scope_ids: &mut Vec<usize>) -> Result<ASTNode, (u32, String)> {
         match ast {
-            ASTNode::RawLambda(..) => panic!(),
+            ASTNode::RawLambda(..) => panic!("Raw lambdas should not exist at this point."),
             ASTNode::Statement(Statement::ExpandedCondition(v, t, f)) => {
-                let v = self.try_visit(&ASTNode::Value(v.clone()), sym_table)?;
+                let v = self.try_visit_aux(&ASTNode::Value(v.clone()), sym_table, scope_ids)?;
                 let mut mt = Vec::new();
                 let mut mf = Vec::new();
 
                 for x in t {
-                    mt.push(self.try_visit(x, sym_table)?);
+                    mt.push(self.try_visit_aux(x, sym_table, scope_ids)?);
                 }
 
                 for x in f {
-                    mf.push(self.try_visit(x, sym_table)?);
+                    mf.push(self.try_visit_aux(x, sym_table, scope_ids)?);
                 }
 
                 Ok(ASTNode::Statement(ExpandedCondition(
@@ -521,10 +538,11 @@ impl ASTVisitor<ASTNode> for SymbolValidation {
                 )))
             }
             ASTNode::Statement(Definition(name, value)) => {
-                let value = self.try_visit(&ASTNode::Value(value.clone()), sym_table)?;
+                let value = self.try_visit_aux(&ASTNode::Value(value.clone()), sym_table, scope_ids)?;
 
-                if !sym_table.contains(name.as_str()) {
-                    sym_table.register(name.as_str());
+                // No scope IDs are required because definitions are only allowed at the top level.
+                if !sym_table.get(name.as_str(), None).is_some() {
+                    sym_table.register(name.as_str(), None);
                     Ok(ASTNode::Statement(Definition(
                         name.clone(),
                         value.as_value().to_owned(),
@@ -537,10 +555,11 @@ impl ASTVisitor<ASTNode> for SymbolValidation {
                 }
             }
             ASTNode::Statement(Redefinition(name, value)) => {
-                if !sym_table.contains(name.as_str()) {
+                // No scope IDs are required because definitions are only allowed at the top level.
+                if !sym_table.get(name.as_str(), None).is_some() {
                     Err((0, format!("Cannot redefine symbol `{}` as it does not exist. Contact the developer.", name)))
                 } else {
-                    let value = self.try_visit(&ASTNode::Value(value.clone()), sym_table)?;
+                    let value = self.try_visit_aux(&ASTNode::Value(value.clone()), sym_table, scope_ids)?;
                     Ok(ASTNode::Statement(Redefinition(
                         name.clone(),
                         value.as_value().to_owned(),
@@ -548,7 +567,8 @@ impl ASTVisitor<ASTNode> for SymbolValidation {
                 }
             }
             ASTNode::Statement(Declaration(name)) => {
-                if sym_table.contains(name.as_str()) {
+                // No scope IDs are required because definitions are only allowed at the top level.
+                if sym_table.get(name.as_str(), None).is_some() {
                     Err((
                         0,
                         format!(
@@ -558,14 +578,14 @@ impl ASTVisitor<ASTNode> for SymbolValidation {
                     ))
                 } else {
                     // Register it.
-                    sym_table.register(name.as_str());
+                    sym_table.register(name.as_str(), None);
                     Ok(ast.clone())
                 }
             }
             ASTNode::Value(Condition(c, t, f)) => {
-                let c = self.try_visit(&ASTNode::Value(c.as_ref().clone()), sym_table)?;
-                let t = self.try_visit(&ASTNode::Value(t.as_ref().clone()), sym_table)?;
-                let f = self.try_visit(&ASTNode::Value(f.as_ref().clone()), sym_table)?;
+                let c = self.try_visit_aux(&ASTNode::Value(c.as_ref().clone()), sym_table, scope_ids)?;
+                let t = self.try_visit_aux(&ASTNode::Value(t.as_ref().clone()), sym_table, scope_ids)?;
+                let f = self.try_visit_aux(&ASTNode::Value(f.as_ref().clone()), sym_table, scope_ids)?;
 
                 Ok(ASTNode::Value(Condition(
                     Box::new(c.as_value().to_owned()),
@@ -578,7 +598,7 @@ impl ASTVisitor<ASTNode> for SymbolValidation {
 
                 for arg in args {
                     margs.push(
-                        (self.try_visit(&ASTNode::Value(arg.clone()), sym_table)?)
+                        (self.try_visit_aux(&ASTNode::Value(arg.clone()), sym_table, scope_ids)?)
                             .as_value()
                             .to_owned(),
                     );
@@ -588,7 +608,7 @@ impl ASTVisitor<ASTNode> for SymbolValidation {
             }
             ASTNode::Value(Literal(t)) => {
                 if let Symbol(name) = t.value() {
-                    if !sym_table.contains(name.as_str()) {
+                    if !sym_table.get(name.as_str(), Some(scope_ids.clone())).is_some() {
                         return Err((t.line(), format!("Use of undefined variable: {}.", name)));
                     }
                 }
@@ -596,8 +616,21 @@ impl ASTVisitor<ASTNode> for SymbolValidation {
                 Ok(ast.clone())
             }
             ASTNode::Value(Lambda(args, varargs, body, scope)) => {
+                let scope = *scope;
+
+                // Register the known variables and vararg.
+                for arg in args {
+                    sym_table.register(arg.as_str(), Some(scope))
+                }
+
+                // Visit the bodies with the added context of the new scope.
+                scope_ids.push(scope);
+
                 let body: Vec<Result<ASTNode, (u32, String)>> =
-                    body.iter().map(|n| self.try_visit(n, sym_table)).collect();
+                    body.iter().map(|n| self.try_visit_aux(n, sym_table, scope_ids)).collect();
+
+                // Invalidate the scope.
+                scope_ids.pop().unwrap();
 
                 let mut new_body = Vec::new();
                 for n in body {
@@ -612,17 +645,28 @@ impl ASTVisitor<ASTNode> for SymbolValidation {
                     args.clone(),
                     varargs.clone(),
                     new_body,
-                    *scope,
+                    scope,
                 )))
             }
         }
     }
 }
 
+impl ASTVisitor<ASTNode> for SymbolValidation {
+    fn try_visit(
+        &self,
+        ast: &ASTNode,
+        sym_table: &mut SymbolTable,
+    ) -> Result<ASTNode, (u32, String)> {
+        self.try_visit_aux(ast, sym_table, &mut Vec::new())
+    }
+}
+
 #[derive(Clone)]
+// TODO(matthew-c21): Auto-generate lambdas for native functions.
 pub struct SymbolTable {
     natives: HashMap<String, String>,
-    defs: HashMap<String, String>,
+    defs: Vec<HashMap<String, String>>,
     factories: HashMap<String, String>,
     gensym: Gensym,
 }
@@ -636,34 +680,50 @@ impl SymbolTable {
 
     // Adds a new name to the table, generating a SymbolTableEntry containing the corresponding C
     // variable name.
-    fn register(&mut self, name: &str) {
+    fn register(&mut self, name: &str, scope_id: Option<usize>) {
+        let scope_id = scope_id.unwrap_or(0);
+
+        while self.defs.len() <= scope_id {
+            self.defs.push(HashMap::new());
+        }
+
         let key = name.to_string();
         let c_name = Gensym::convert(&key);
 
-        if !self.defs.contains_key(&key) {
-            self.defs.insert(key, c_name);
+        if self.get(name, Some(vec![scope_id])).is_none() {
+            self.defs[scope_id].insert(key, c_name);
         }
-    }
-
-    pub fn contains(&self, name: &str) -> bool {
-        self.contains_fn(name) || self.contains_obj(name)
     }
 
     pub fn contains_fn(&self, name: &str) -> bool {
         self.natives.contains_key(name)
     }
 
-    pub fn contains_obj(&self, name: &str) -> bool {
-        self.defs.contains_key(name)
-    }
-
     // TODO(matthew-c21): Test this function.
-    pub fn get(&self, name: &str) -> Option<&String> {
+    /// Finds the C name of a lisp variable given an optional list of scopes in which to search. If
+    /// multiple are found, the name from the last scope found is returned. Always searches global
+    /// variables, even if not provided.
+    pub fn get(&self, name: &str, scope_ids: Option<Vec<usize>>) -> Option<&String> {
         if self.natives.contains_key(name) {
-            self.natives.get(name)
-        } else {
-            self.defs.get(name)
+            return self.natives.get(name)
         }
+
+        let mut scope_ids = scope_ids.unwrap_or(vec![0]);
+        if scope_ids.is_empty() {
+            scope_ids.push(0);
+        } else if !scope_ids.contains(&0) {
+            scope_ids.insert(0, 0);
+        }
+
+        let mut result = None;
+
+        for id in scope_ids {
+            if id < self.defs.len() && self.defs[id].contains_key(name) {
+                result = self.defs[id].get(name)
+            }
+        }
+
+        result
     }
 
     pub fn get_factory(&self, name: &str) -> &String {
@@ -673,7 +733,7 @@ impl SymbolTable {
     pub fn dummy() -> Self {
         Self {
             natives: HashMap::new(),
-            defs: HashMap::new(),
+            defs: Vec::new(),
             factories: HashMap::new(),
             gensym: Gensym::new(),
         }
@@ -729,7 +789,7 @@ impl SymbolTable {
         // Ensure that the JSON object is formed properly.
         Self::validate_json(&obj);
 
-        let defs = Self::json_to_map(&obj, "variables");
+        let defs = vec![Self::json_to_map(&obj, "variables")];
 
         Self {
             defs,
@@ -910,7 +970,8 @@ mod visitor_tests {
         assert_eq!(1, expansion.len());
 
         if let Lambda(_, _, body, _) = &expansion[0].as_value() {
-            assert_eq!(2, body.len());
+            // 2 declarations, 2 conditions, and the output value.
+            assert_eq!(5, body.len());
         } else {
             panic!("Inside of lambda not expanded.")
         }
@@ -1221,7 +1282,7 @@ mod ast_tests {
 
         for (i, lambda) in lambdas.iter().enumerate() {
             if let ASTNode::Value(Lambda(_, _, _, j)) = lambda {
-                assert_eq!(i as u32 + 1, *j);
+                assert_eq!(i + 1, *j);
             } else {
                 panic!()
             }
