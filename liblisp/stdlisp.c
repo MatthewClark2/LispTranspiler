@@ -809,13 +809,18 @@ struct LispDatum* apply(struct LispDatum** args, uint32_t nargs) {
   //  Answer: Do it at runtime. Native functions can probably work with the given array as is, but generated functions
   //  will just need to interface through a list, which should just require a `rest = list(args + x, nargs - x)`, where
   //  x is the number of named arguments.
-  struct LispDatum* f_args[len];
+  struct LispDatum* f_args[len + args[0]->n_captures];
+
+  for (uint32_t k = 0; k < args[0]->n_captures; ++k) {
+    f_args[k] = args[0]->captures[k];
+  }
+
   uint32_t j = 0;
   struct LispDatum* ptr;
 
   // Collect the list into an array.
   for (ptr = args[1]; ptr != NULL && ptr->type == Cons; ptr = ptr->cdr) {
-    f_args[j++] = ptr->car;
+    f_args[args[0]->n_captures + j++] = ptr->car;
   }
 
   // Improper list, so we give up.
@@ -833,7 +838,19 @@ struct LispDatum* funcall(struct LispDatum** args, uint32_t nargs) {
     return raise(Type, "Expected lambda.");
   }
 
+  struct LispDatum* args_with_capture[nargs - 1 + args[0]->n_captures];
+
+  if (args[0]->captures != NULL ) {
+    for (size_t i = 0; i < args[0]->n_captures; ++i) {
+      args_with_capture[i] = args[0]->captures[i];
+    }
+  }
+
+  for (size_t i = 0; i < nargs - 1; ++i) {
+    args_with_capture[i + args[0]->n_captures] = args[1 + i];
+  }
+
   // If there's no other arguments, we want to avoid the risk of indexing past the array.
-  return args[0]->f(nargs == 1 ? NULL : args + 1, nargs - 1);
+  return args[0]->f(args_with_capture, nargs - 1 + args[0]->n_captures);
 }
 

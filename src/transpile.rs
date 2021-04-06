@@ -190,14 +190,12 @@ impl Transpiler {
             )
         }
 
-        for node in &body {
-            for line in self.translate_node(node, &mut vec![scope_id]) {
-                output.push_str(line.as_str());
-            }
-            output.push(';');
-        }
+        let mut lines: Vec<String> = body.iter().map(|n| self.translate_node(n, &mut vec![scope_id])).flatten().collect();
+        let ret_value = lines.pop().unwrap();
 
-        output.push('}');
+        lines.iter().for_each(|l| output.push_str(l.as_str()));
+
+        output.push_str(format!("return {};}}", ret_value).as_str());
 
         output
     }
