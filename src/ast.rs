@@ -10,8 +10,6 @@ use std::fs;
 pub enum ASTNode {
     Value(Value),
     Statement(Statement),
-    RawLambda(Vec<String>, Option<String>, Vec<ASTNode>),
-    LambdaDefinition(String, Vec<String>, Option<String>, Vec<ASTNode>),
 }
 
 impl ASTNode {
@@ -21,52 +19,8 @@ impl ASTNode {
             _ => panic!("Illegal conversion to value."),
         }
     }
-}
 
-pub fn construct_ast(parse_tree: &Vec<ParseTree>) -> Result<Vec<ASTNode>, (u32, String)> {
-    let mut ast = Vec::new();
-    let mut scope_count = 0;
-
-    for tree in parse_tree {
-        ast.push(match ASTNode::try_from(tree)? {
-            ASTNode::RawLambda(args, vararg, body) => {
-                scope_count += 1;
-                ASTNode::Value(Lambda(
-                    args.to_owned(),
-                    vararg.to_owned(),
-                    body.to_owned(),
-                    scope_count,
-                ))
-            }
-            ASTNode::LambdaDefinition(name, args, vararg, body) => {
-                scope_count += 1;
-                ASTNode::Statement(Definition(
-                    name.clone(),
-                    Lambda(
-                        args.to_owned(),
-                        vararg.to_owned(),
-                        body.to_owned(),
-                        scope_count,
-                    ),
-                ))
-            }
-            x => x,
-        });
-    }
-
-    Ok(ast)
-}
-
-impl From<Token> for ASTNode {
-    fn from(t: Token) -> Self {
-        Self::Value(Literal(t.clone()))
-    }
-}
-
-impl TryFrom<&ParseTree> for ASTNode {
-    type Error = (u32, String);
-
-    fn try_from(tree: &ParseTree) -> Result<Self, Self::Error> {
+    fn try_from_parse_tree(tree: &ParseTree, scope_id: &mut usize) -> Result<ASTNode, (u32, String)>  {
         match &tree {
             ParseTree::Leaf(t) => Ok(Self::from(t.clone())),
             ParseTree::Branch(elems, start, _stop, None) => {
@@ -79,9 +33,9 @@ impl TryFrom<&ParseTree> for ASTNode {
 
                 return match &elems[0] {
                     ParseTree::Leaf(Token {
-                        line,
-                        value: Symbol(s),
-                    }) if &s[..] == "if" => {
+                                        line,
+                                        value: Symbol(s),
+                                    }) if &s[..] == "if" => {
                         if elems.len() != 4 {
                             return Err((
                                 *line,
@@ -92,9 +46,9 @@ impl TryFrom<&ParseTree> for ASTNode {
                             ));
                         }
 
-                        let cond = Self::try_from(&elems[1])?;
-                        let if_true = Self::try_from(&elems[2])?;
-                        let if_false = Self::try_from(&elems[3])?;
+                        let cond = Self::try_from_parse_tree(&elems[1], scope_id)?;
+                        let if_true = Self::try_from_parse_tree(&elems[2], scope_id)?;
+                        let if_false = Self::try_from_parse_tree(&elems[3], scope_id)?;
 
                         match (cond, if_true, if_false) {
                             (ASTNode::Value(a), ASTNode::Value(b), ASTNode::Value(c)) => Ok(ASTNode::Value(Value::Condition(Box::new(a.clone()), Box::new(b.clone()), Box::new(c.clone())))),
@@ -102,40 +56,28 @@ impl TryFrom<&ParseTree> for ASTNode {
                         }
                     }
                     ParseTree::Leaf(Token {
-                        line,
-                        value: Symbol(s),
-                    }) if &s[..] == "define" => {
+                                        line,
+                                        value: Symbol(s),
+                                    }) if &s[..] == "define" => {
                         if elems.len() != 3 {
                             return Err((*line, String::from(format!("Expected exactly 2 arguments in `define` special form. Found {}.", elems.len() - 1))));
                         }
 
-                        let defined = Self::try_from(&elems[1])?;
-                        let value = Self::try_from(&elems[2])?;
+                        let defined = Self::try_from_parse_tree(&elems[1], scope_id)?;
+                        let value = Self::try_from_parse_tree(&elems[2], scope_id)?;
 
                         match (defined, value) {
                             (
                                 ASTNode::Value(Literal(Token {
-                                    value: Symbol(s), ..
-                                })),
+                                                           value: Symbol(s), ..
+                                                       })),
                                 ASTNode::Value(v),
                             ) => Ok(ASTNode::Statement(Definition(s.clone(), v.clone()))),
                             (
                                 ASTNode::Value(Literal(Token {
-                                    value: Symbol(s),
-                                    ..
-                                })),
-                                ASTNode::RawLambda(args, vararg, body),
-                            ) => Ok(ASTNode::LambdaDefinition(
-                                s.clone(),
-                                args.clone(),
-                                vararg.clone(),
-                                body.clone(),
-                            )),
-                            (
-                                ASTNode::Value(Literal(Token {
-                                    value: Symbol(_s),
-                                    line,
-                                })),
+                                                           value: Symbol(_s),
+                                                           line,
+                                                       })),
                                 _,
                             ) => Err((line, String::from("Can only assign a symbol to a value."))),
                             (_, ASTNode::Value(_v)) => {
@@ -145,9 +87,9 @@ impl TryFrom<&ParseTree> for ASTNode {
                         }
                     }
                     ParseTree::Leaf(Token {
-                        line,
-                        value: Symbol(s),
-                    }) if &s[..] == "lambda" => {
+                                        line,
+                                        value: Symbol(s),
+                                    }) if &s[..] == "lambda" => {
                         if elems.len() != 3 {
                             return Err((*line, format!("Expected exactly 2 arguments in `lambda` special form. Found {}.", elems.len() - 1)));
                         }
@@ -192,7 +134,7 @@ impl TryFrom<&ParseTree> for ASTNode {
                             }
                         }
 
-                        let body = Self::try_from(&elems[2])?;
+                        let body = Self::try_from_parse_tree(&elems[2], scope_id)?;
 
                         if let ASTNode::Statement(_) = body {
                             return Err((
@@ -202,7 +144,8 @@ impl TryFrom<&ParseTree> for ASTNode {
                             ));
                         }
 
-                        Ok(ASTNode::RawLambda(names, vararg, vec![body]))
+                        *scope_id += 1;
+                        Ok(ASTNode::Value(Lambda(names, vararg, vec![body], *scope_id)))
                     }
                     ParseTree::Leaf(t) => match &t {
                         Token {
@@ -212,7 +155,7 @@ impl TryFrom<&ParseTree> for ASTNode {
                             let mut args = Vec::new();
 
                             for subtree in &elems[1..] {
-                                match Self::try_from(subtree)? {
+                                match Self::try_from_parse_tree(subtree, scope_id)? {
                                     ASTNode::Value(v) => args.push(v),
                                     _ => {
                                         return Err((
@@ -222,8 +165,8 @@ impl TryFrom<&ParseTree> for ASTNode {
                                     }
                                 }
                             }
-                            let args: Vec<Result<Self, Self::Error>> =
-                                (&elems[1..]).iter().map(Self::try_from).collect();
+                            let args: Vec<Result<Self, (u32, String)>> =
+                                (&elems[1..]).iter().map(|e| Self::try_from_parse_tree(e, scope_id)).collect();
 
                             let mut values = Vec::new();
                             for arg in args {
@@ -252,6 +195,32 @@ impl TryFrom<&ParseTree> for ASTNode {
                 Err((*start, String::from("Unexpected syntax token `.`.")))
             }
         }
+    }
+}
+
+pub fn construct_ast(parse_tree: &Vec<ParseTree>) -> Result<Vec<ASTNode>, (u32, String)> {
+    let mut ast = Vec::new();
+    let mut scope_count: usize = 0;
+
+    for tree in parse_tree {
+        ast.push(ASTNode::try_from((tree, &mut scope_count))?);
+    }
+
+    Ok(ast)
+}
+
+impl From<Token> for ASTNode {
+    fn from(t: Token) -> Self {
+        Self::Value(Literal(t.clone()))
+    }
+}
+
+impl TryFrom<(&ParseTree, &mut usize)> for ASTNode {
+    type Error = (u32, String);
+
+    fn try_from(data: (&ParseTree, &mut usize)) -> Result<Self, Self::Error> {
+        let (tree, scope_id) = data;
+        Self::try_from_parse_tree(tree, scope_id)
     }
 }
 
@@ -561,7 +530,6 @@ impl SymbolValidation {
         scope_ids: &mut Vec<usize>,
     ) -> Result<ASTNode, (u32, String)> {
         match ast {
-            ASTNode::LambdaDefinition(..) | ASTNode::RawLambda(..) => panic!("Raw lambdas should not exist at this point."),
             ASTNode::Statement(Statement::ExpandedCondition(v, t, f)) => {
                 let v = self.try_visit_aux(&ASTNode::Value(v.clone()), sym_table, scope_ids)?;
                 let mut mt = Vec::new();
