@@ -99,7 +99,6 @@ fn run(program: &str) -> String {
         .flatten()
         .collect();
     let ast = ast.iter().map(|n| sv.visit(n, &mut sym_table)).collect();
-
     let mut transpiler = transpile::Transpiler::new(sym_table);
-    transpiler.translate(ast)
+    transpiler.translate(&ast)
 }

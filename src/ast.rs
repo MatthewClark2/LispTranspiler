@@ -608,7 +608,7 @@ impl SymbolValidation {
             }
             ASTNode::Value(Literal(t)) => {
                 if let Symbol(name) = t.value() {
-                    if !sym_table.get(name.as_str(), Some(scope_ids.clone())).is_some() {
+                    if !sym_table.get(name.as_str(), Some(scope_ids)).is_some() {
                         return Err((t.line(), format!("Use of undefined variable: {}.", name)));
                     }
                 }
@@ -690,7 +690,7 @@ impl SymbolTable {
         let key = name.to_string();
         let c_name = Gensym::convert(&key);
 
-        if self.get(name, Some(vec![scope_id])).is_none() {
+        if self.get(name, Some(&vec![scope_id])).is_none() {
             self.defs[scope_id].insert(key, c_name);
         }
     }
@@ -703,12 +703,17 @@ impl SymbolTable {
     /// Finds the C name of a lisp variable given an optional list of scopes in which to search. If
     /// multiple are found, the name from the last scope found is returned. Always searches global
     /// variables, even if not provided.
-    pub fn get(&self, name: &str, scope_ids: Option<Vec<usize>>) -> Option<&String> {
+    pub fn get(&self, name: &str, scope_ids: Option<&Vec<usize>>) -> Option<&String> {
         if self.natives.contains_key(name) {
             return self.natives.get(name)
         }
 
-        let mut scope_ids = scope_ids.unwrap_or(vec![0]);
+        let mut scope_ids = if scope_ids.is_some() {
+            scope_ids.unwrap().clone()
+        } else {
+            vec![0]
+        };
+
         if scope_ids.is_empty() {
             scope_ids.push(0);
         } else if !scope_ids.contains(&0) {
