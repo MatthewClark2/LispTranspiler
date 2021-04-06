@@ -78,7 +78,7 @@ impl Transpiler {
                         scope_id,
                     ))
                 }
-                ASTNode::LambdaDefinition(..) | ASTNode::Value(Condition(..)) | ASTNode::RawLambda(..) => {
+                ASTNode::Value(Condition(..)) => {
                     panic!("Contact the developer.")
                 }
                 ASTNode::Statement(Declaration(..)) => (),
@@ -93,7 +93,7 @@ impl Transpiler {
 
         for line in ast {
             match line {
-                ASTNode::LambdaDefinition(..) | ASTNode::RawLambda(..) | ASTNode::Value(Condition(..)) => panic!(),
+                ASTNode::Value(Condition(..)) => panic!(),
                 ASTNode::Value(Call(_, args)) => {
                     for arg in args {
                         output.append(&mut Self::extract_lambda_definitions(&vec![
@@ -247,7 +247,6 @@ impl Transpiler {
         let mut output = Vec::new();
 
         match node {
-            ASTNode::LambdaDefinition(..) | ASTNode::RawLambda(..) => panic!(),
             ASTNode::Value(Literal(t)) => {
                 match t.value() {
                     TokenValue::Int(x) => {
