@@ -11,6 +11,7 @@ pub enum ASTNode {
     Value(Value),
     Statement(Statement),
     RawLambda(Vec<String>, Option<String>, Vec<ASTNode>),
+    LambdaDefinition(String, Vec<String>, Option<String>, Vec<ASTNode>),
 }
 
 impl ASTNode {
@@ -35,6 +36,18 @@ pub fn construct_ast(parse_tree: &Vec<ParseTree>) -> Result<Vec<ASTNode>, (u32, 
                     vararg.to_owned(),
                     body.to_owned(),
                     scope_count,
+                ))
+            }
+            ASTNode::LambdaDefinition(name, args, vararg, body) => {
+                scope_count += 1;
+                ASTNode::Statement(Definition(
+                    name.clone(),
+                    Lambda(
+                        args.to_owned(),
+                        vararg.to_owned(),
+                        body.to_owned(),
+                        scope_count,
+                    ),
                 ))
             }
             x => x,
@@ -106,6 +119,18 @@ impl TryFrom<&ParseTree> for ASTNode {
                                 })),
                                 ASTNode::Value(v),
                             ) => Ok(ASTNode::Statement(Definition(s.clone(), v.clone()))),
+                            (
+                                ASTNode::Value(Literal(Token {
+                                    value: Symbol(s),
+                                    ..
+                                })),
+                                ASTNode::RawLambda(args, vararg, body),
+                            ) => Ok(ASTNode::LambdaDefinition(
+                                s.clone(),
+                                args.clone(),
+                                vararg.clone(),
+                                body.clone(),
+                            )),
                             (
                                 ASTNode::Value(Literal(Token {
                                     value: Symbol(_s),
@@ -373,13 +398,22 @@ impl ASTVisitor<Vec<ASTNode>> for FunctionUnfurl {
                     new_body.append(&mut self.try_visit(line, sym_table)?)
                 }
 
-                result.push(ASTNode::Value(Lambda(args.clone(), vararg.clone(), new_body, *scope_id)));
+                result.push(ASTNode::Value(Lambda(
+                    args.clone(),
+                    vararg.clone(),
+                    new_body,
+                    *scope_id,
+                )));
             }
             ASTNode::Value(Condition(c, t, f)) => {
                 let mut cond = self.try_visit(&ASTNode::Value(c.as_ref().clone()), sym_table)?;
                 let c = cond.pop().unwrap();
                 result.append(&mut cond);
-                result.push(ASTNode::Value(Condition(Box::from(c.as_value().to_owned()), t.clone(), f.clone())));
+                result.push(ASTNode::Value(Condition(
+                    Box::from(c.as_value().to_owned()),
+                    t.clone(),
+                    f.clone(),
+                )));
             }
             _ => return Ok(vec![ast.clone()]),
         }
@@ -505,7 +539,12 @@ impl ASTVisitor<Vec<ASTNode>> for ConditionUnroll {
                     new_body.append(&mut self.try_visit(line, sym_table)?);
                 }
 
-                Ok(vec![ASTNode::Value(Lambda(args.clone(), vararg.clone(), new_body, *scope_id))])
+                Ok(vec![ASTNode::Value(Lambda(
+                    args.clone(),
+                    vararg.clone(),
+                    new_body,
+                    *scope_id,
+                ))])
             }
             _ => Ok(vec![ast.clone()]),
         }
@@ -515,9 +554,14 @@ impl ASTVisitor<Vec<ASTNode>> for ConditionUnroll {
 pub struct SymbolValidation;
 
 impl SymbolValidation {
-    fn try_visit_aux(&self, ast: &ASTNode, sym_table: &mut SymbolTable, scope_ids: &mut Vec<usize>) -> Result<ASTNode, (u32, String)> {
+    fn try_visit_aux(
+        &self,
+        ast: &ASTNode,
+        sym_table: &mut SymbolTable,
+        scope_ids: &mut Vec<usize>,
+    ) -> Result<ASTNode, (u32, String)> {
         match ast {
-            ASTNode::RawLambda(..) => panic!("Raw lambdas should not exist at this point."),
+            ASTNode::LambdaDefinition(..) | ASTNode::RawLambda(..) => panic!("Raw lambdas should not exist at this point."),
             ASTNode::Statement(Statement::ExpandedCondition(v, t, f)) => {
                 let v = self.try_visit_aux(&ASTNode::Value(v.clone()), sym_table, scope_ids)?;
                 let mut mt = Vec::new();
@@ -538,7 +582,8 @@ impl SymbolValidation {
                 )))
             }
             ASTNode::Statement(Definition(name, value)) => {
-                let value = self.try_visit_aux(&ASTNode::Value(value.clone()), sym_table, scope_ids)?;
+                let value =
+                    self.try_visit_aux(&ASTNode::Value(value.clone()), sym_table, scope_ids)?;
 
                 // No scope IDs are required because definitions are only allowed at the top level.
                 if !sym_table.get(name.as_str(), None).is_some() {
@@ -559,7 +604,8 @@ impl SymbolValidation {
                 if !sym_table.get(name.as_str(), None).is_some() {
                     Err((0, format!("Cannot redefine symbol `{}` as it does not exist. Contact the developer.", name)))
                 } else {
-                    let value = self.try_visit_aux(&ASTNode::Value(value.clone()), sym_table, scope_ids)?;
+                    let value =
+                        self.try_visit_aux(&ASTNode::Value(value.clone()), sym_table, scope_ids)?;
                     Ok(ASTNode::Statement(Redefinition(
                         name.clone(),
                         value.as_value().to_owned(),
@@ -583,9 +629,12 @@ impl SymbolValidation {
                 }
             }
             ASTNode::Value(Condition(c, t, f)) => {
-                let c = self.try_visit_aux(&ASTNode::Value(c.as_ref().clone()), sym_table, scope_ids)?;
-                let t = self.try_visit_aux(&ASTNode::Value(t.as_ref().clone()), sym_table, scope_ids)?;
-                let f = self.try_visit_aux(&ASTNode::Value(f.as_ref().clone()), sym_table, scope_ids)?;
+                let c =
+                    self.try_visit_aux(&ASTNode::Value(c.as_ref().clone()), sym_table, scope_ids)?;
+                let t =
+                    self.try_visit_aux(&ASTNode::Value(t.as_ref().clone()), sym_table, scope_ids)?;
+                let f =
+                    self.try_visit_aux(&ASTNode::Value(f.as_ref().clone()), sym_table, scope_ids)?;
 
                 Ok(ASTNode::Value(Condition(
                     Box::new(c.as_value().to_owned()),
@@ -623,11 +672,17 @@ impl SymbolValidation {
                     sym_table.register(arg.as_str(), Some(scope))
                 }
 
+                if varargs.is_some() {
+                    sym_table.register(varargs.as_ref().map(|x| x.as_str()).unwrap(), Some(scope));
+                }
+
                 // Visit the bodies with the added context of the new scope.
                 scope_ids.push(scope);
 
-                let body: Vec<Result<ASTNode, (u32, String)>> =
-                    body.iter().map(|n| self.try_visit_aux(n, sym_table, scope_ids)).collect();
+                let body: Vec<Result<ASTNode, (u32, String)>> = body
+                    .iter()
+                    .map(|n| self.try_visit_aux(n, sym_table, scope_ids))
+                    .collect();
 
                 // Invalidate the scope.
                 scope_ids.pop().unwrap();
@@ -705,7 +760,7 @@ impl SymbolTable {
     /// variables, even if not provided.
     pub fn get(&self, name: &str, scope_ids: Option<&Vec<usize>>) -> Option<&String> {
         if self.natives.contains_key(name) {
-            return self.natives.get(name)
+            return self.natives.get(name);
         }
 
         let mut scope_ids = if scope_ids.is_some() {
@@ -769,6 +824,7 @@ impl SymbolTable {
         assert!(obj["factories"].has_key("keyword"));
         assert!(obj["factories"].has_key("true"));
         assert!(obj["factories"].has_key("false"));
+        assert!(obj["factories"].has_key("lambda"));
     }
 
     fn json_to_map(obj: &json::JsonValue, name: &str) -> HashMap<String, String> {

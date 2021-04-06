@@ -73,7 +73,7 @@ impl Transpiler {
                         scope_id,
                     ))
                 }
-                ASTNode::Value(Condition(..)) | ASTNode::RawLambda(..) => {
+                ASTNode::LambdaDefinition(..) | ASTNode::Value(Condition(..)) | ASTNode::RawLambda(..) => {
                     panic!("Contact the developer.")
                 }
                 ASTNode::Statement(Declaration(..)) => (),
@@ -88,7 +88,7 @@ impl Transpiler {
 
         for line in ast {
             match line {
-                ASTNode::RawLambda(..) | ASTNode::Value(Condition(..)) => panic!(),
+                ASTNode::LambdaDefinition(..) | ASTNode::RawLambda(..) | ASTNode::Value(Condition(..)) => panic!(),
                 ASTNode::Value(Call(_, args)) => {
                     for arg in args {
                         output.append(&mut Self::extract_lambda_definitions(&vec![
@@ -101,12 +101,7 @@ impl Transpiler {
 
                     output.append(&mut Self::extract_lambda_definitions(body));
                 }
-                ASTNode::Statement(Definition(_, value)) => {
-                    output.append(&mut Self::extract_lambda_definitions(&vec![
-                        ASTNode::Value(value.clone()),
-                    ]))
-                }
-                ASTNode::Statement(Redefinition(_, value)) => {
+                ASTNode::Statement(Definition(_, value)) | ASTNode::Statement(Redefinition(_, value)) => {
                     output.append(&mut Self::extract_lambda_definitions(&vec![
                         ASTNode::Value(value.clone()),
                     ]))
@@ -126,7 +121,7 @@ impl Transpiler {
     }
 
     fn lambda_name(&mut self, scope_id: usize) -> String {
-        if self.functions.len() <= scope_id {
+        if scope_id > self.functions.len() {
             panic!("Attempt to generate a name for a lambda that has not been extracted.");
         }
 
@@ -142,7 +137,7 @@ impl Transpiler {
             fn_name
         );
 
-        let (args, vararg, body, id) = self.functions[scope_id].clone();
+        let (args, vararg, body, id) = self.functions[scope_id-1].clone();
         let captures = Self::find_captures(&args, &vararg, &body, id);
 
         let n_captures = captures.len();
@@ -157,7 +152,7 @@ impl Transpiler {
             output.push_str(
                 format!(
                     "struct LispDatum* {} = args[{}];",
-                    self.sym_table.get(capture.as_str(), None).unwrap(),
+                    self.sym_table.get(capture.as_str(), Some(&vec![id])).unwrap(),
                     i
                 )
                 .as_str(),
@@ -249,7 +244,7 @@ impl Transpiler {
         let mut output = Vec::new();
 
         match node {
-            ASTNode::RawLambda(..) => panic!(),
+            ASTNode::LambdaDefinition(..) | ASTNode::RawLambda(..) => panic!(),
             ASTNode::Value(Literal(t)) => {
                 match t.value() {
                     TokenValue::Int(x) => {
@@ -317,7 +312,7 @@ impl Transpiler {
                 assert_eq!(*scope_id, scope_ids.pop().unwrap());
 
                 // NOTE(matthew-c21): NULL is used for all non-native lambdas.
-                output.push(format!("{}({}, {}, {}, NULL)", lambda_fn_name, self.sym_table.get_factory("lambda"), capture_vec_name, captures.len()));
+                output.push(format!("{}({}, {}, {}, NULL)", self.sym_table.get_factory("lambda"), lambda_fn_name, capture_vec_name, captures.len()));
             }
             ASTNode::Statement(Declaration(name)) => {
                 output.push(format!("struct LispDatum* {}", self.sym_table.get(name.as_str(), Some(scope_ids)).unwrap()))

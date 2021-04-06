@@ -23,7 +23,8 @@
     "cons": "cons",
     "append": "append",
     "reverse": "reverse",
-    "invoke": "invoke"
+    "funcall": "funcall",
+    "apply": "apply"
   },
   "variables": {
   },
@@ -35,6 +36,7 @@
     "string": "new_string",
     "keyword": "new_keyword",
     "true": "get_true",
-    "false": "get_false"
+    "false": "get_false",
+    "lambda": "new_lambda"
   }
 }
