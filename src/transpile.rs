@@ -56,7 +56,12 @@ impl Transpiler {
                 }
                 ASTNode::Value(Literal(t)) => {
                     if let Symbol(s) = t.value() {
-                        captures.push(s.clone());
+                        if !(args.contains(&s) || match vararg {
+                            Some(y) => y.eq(&s),
+                            None => false,
+                        }) {
+                            captures.push(s.clone());
+                        }
                     }
                 }
                 ASTNode::Statement(Definition(_, v)) => captures.append(&mut Self::find_captures(
@@ -299,10 +304,16 @@ impl Transpiler {
                 let capture_vec_name = self.sym_table.generate("lambda_captures");
                 let captures = Self::find_captures(args, vararg, body, *scope_id);
 
+                let capture_vec_name = if !captures.is_empty() {
+                    capture_vec_name
+                } else {
+                    "NULL".to_string()
+                };
+
                 scope_ids.push(*scope_id);
 
                 if !captures.is_empty() {
-                    output.push(format!("struct LispDatum** {}[{}];", capture_vec_name, captures.len()));
+                    output.push(format!("struct LispDatum* {}[{}];", capture_vec_name, captures.len()));
 
                     for (i, capture) in captures.iter().enumerate() {
                         output.push(format!("{}[{}] = {};", capture_vec_name, i, self.sym_table.get(capture, Some(scope_ids)).unwrap()))

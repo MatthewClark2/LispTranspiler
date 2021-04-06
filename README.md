@@ -27,7 +27,7 @@ If the script fails at any point, it leaves the `tmp/` directory.
 Improve documentation for the format of symbols, numbers, keywords, and hashmap literals. Also add more documentation
 for the behavior of standard library functions.
 
-Add `do`, `loop` special forms.
+Add `do`, `loop`, `let` special forms.
 
 Modify the C runtime to use a reference counting garbage collection system. The garbage collector should probably be
 passed between functions as a global-ish variable. This would make it easier to later change the codebase to accept a
@@ -42,6 +42,4 @@ application.
 
 Add a factory method that automatically applies visitors in the correct order.
 
-Statically allocate lambdas for internal functions as well as all keywords that appear in the program.
-
-Update existing visitors to go after lambda special form.
+Statically allocate all keywords that appear in the program.
