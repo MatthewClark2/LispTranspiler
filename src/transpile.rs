@@ -156,7 +156,7 @@ impl Transpiler {
             //  reaching the translation stage.
             output.push_str(
                 format!(
-                    "struct LispDatum* {} = args[{}];",
+                    "struct LispDatum* {} = _args[{}];",
                     self.sym_table.get(capture.as_str(), Some(&vec![id])).unwrap(),
                     i
                 )
@@ -167,7 +167,7 @@ impl Transpiler {
         for (i, arg) in args.iter().enumerate() {
             output.push_str(
                 format!(
-                    "struct LispDatum* {} = args[{}];",
+                    "struct LispDatum* {} = _args[{}];",
                     self.sym_table
                         .get(arg.as_str(), Some(&vec![scope_id]))
                         .unwrap(),

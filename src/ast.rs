@@ -152,19 +152,6 @@ impl ASTNode {
                             value: Symbol(s),
                             line,
                         } => {
-                            let mut args = Vec::new();
-
-                            for subtree in &elems[1..] {
-                                match Self::try_from_parse_tree(subtree, scope_id)? {
-                                    ASTNode::Value(v) => args.push(v),
-                                    _ => {
-                                        return Err((
-                                            *line,
-                                            String::from("All arguments in call should be values."),
-                                        ));
-                                    }
-                                }
-                            }
                             let args: Vec<Result<Self, (u32, String)>> =
                                 (&elems[1..]).iter().map(|e| Self::try_from_parse_tree(e, scope_id)).collect();
 
