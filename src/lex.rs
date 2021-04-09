@@ -176,7 +176,7 @@ fn is_token_terminal(ch: char) -> bool {
 
 fn is_symbolic_start(ch: char) -> bool {
     vec![
-        '*', '$', '+', '-', '_', '!', '?', '/', '%', '&', '^', '~', '<', '>', '=', '@',
+        '*', '$', '+', '-', '!', '?', '/', '%', '&', '^', '~', '<', '>', '=', '@',
     ]
     .contains(&ch)
         || ch.is_alphabetic()
@@ -687,5 +687,15 @@ mod tests {
                 value: Nil
             }])
         )
+    }
+
+    #[test]
+    fn symbols_cant_contain_underscores() {
+        assert_eq!(start("he_llo"), Err(LexError {line: 1, msg: "Unable to match `he_llo` to a token value.".to_string()}))
+    }
+
+    #[test]
+    fn symbols_cant_start_with_underscores() {
+        assert_eq!(start("_hello"), Err(LexError {line: 1, msg: "Unable to match `_hello` to a token value.".to_string()}))
     }
 }

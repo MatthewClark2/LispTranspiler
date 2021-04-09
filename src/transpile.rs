@@ -138,7 +138,7 @@ impl Transpiler {
     fn translate_lambda(&mut self, scope_id: usize) -> String {
         let fn_name = self.lambda_name(scope_id);
         let mut output = format!(
-            "struct LispDatum* {}(struct LispDatum** args, uint32_t nargs){{",
+            "struct LispDatum* {}(struct LispDatum** _args, uint32_t _nargs){{",
             fn_name
         );
 
@@ -180,7 +180,7 @@ impl Transpiler {
         if vararg.is_some() {
             output.push_str(
                 format!(
-                    "struct LispDatum* {} = {}(args + (nargs - {}), {});",
+                    "struct LispDatum* {} = {}(_args + (_nargs - {}), {});",
                     self.sym_table.get(vararg.as_ref().unwrap().as_str(), Some(&vec![scope_id])).unwrap(),
                     self.sym_table.get("list", None).unwrap(),
                     n_captures + n_named_args,
