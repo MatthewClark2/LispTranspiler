@@ -800,27 +800,23 @@ struct LispDatum* apply(struct LispDatum** args, uint32_t nargs) {
   }
 
   // This is a double traversal, which is inefficient, but saves the hassle of allocating and freeing memory.
-  struct LispDatum* i = length(&args[1], 1);
+  struct LispDatum* i = length(args + 1, 1);
   int len = i->int_val;
 
   free(i);  // TODO(matthew-c21): Clean up when the garbage collector is implemented.
 
-  // TODO(matthew-c21): Are variadic arguments handled at compile time or run time?
-  //  Answer: Do it at runtime. Native functions can probably work with the given array as is, but generated functions
-  //  will just need to interface through a list, which should just require a `rest = list(args + x, nargs - x)`, where
-  //  x is the number of named arguments.
   struct LispDatum* f_args[len + args[0]->n_captures];
 
   for (uint32_t k = 0; k < args[0]->n_captures; ++k) {
     f_args[k] = args[0]->captures[k];
   }
 
-  uint32_t j = 0;
+  uint32_t j = args[0]->n_captures;
   struct LispDatum* ptr;
 
   // Collect the list into an array.
   for (ptr = args[1]; ptr != NULL && ptr->type == Cons; ptr = ptr->cdr) {
-    f_args[args[0]->n_captures + j++] = ptr->car;
+    f_args[j++] = ptr->car;
   }
 
   // Improper list, so we give up.

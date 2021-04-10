@@ -1099,3 +1099,56 @@ void Test_reverse_errors(CuTest* tc) {
   struct LispDatum* bad_pair = cons(pair_args, 2);
   AssertThrows(reverse(&bad_pair, 1), Type);
 }
+
+// (lambda (a . bs) (cons (+ x a) bs))
+static struct LispDatum* full_lambda(struct LispDatum** args, uint32_t nargs) {
+  struct LispDatum* x = args[0];
+  struct LispDatum* a = args[1];
+  struct LispDatum* bs = list(args + 1 + 1, nargs - 1 - 1);
+
+  struct LispDatum* ac1[2];
+  ac1[0] = x;
+  ac1[1] = a;
+  struct LispDatum* result = add(ac1, 2);
+  struct LispDatum* ac2[2];
+  ac2[0] = result;
+  ac2[1] = bs;
+  return cons(ac2, 2);
+}
+
+void Test_funcall(CuTest* tc) {
+  struct LispDatum* x = new_integer(5);
+  struct LispDatum* lambda = new_lambda(full_lambda, &x, 1, NULL);
+
+  struct LispDatum* ac[3];
+  ac[0] = lambda;
+  ac[1] = new_integer(2);
+  ac[2] = new_integer(6);
+
+  struct LispDatum* result = funcall(ac, 3);
+
+  CuAssert(tc, "lambda did not return correct value.", result->type == Cons);
+  CuAssertIntEquals(tc, 7, result->car->int_val);
+  CuAssertIntEquals(tc, 6, result->cdr->car->int_val);
+  CuAssertPtrEquals(tc, NULL, result->cdr->cdr);
+}
+
+void Test_apply(CuTest* tc) {
+  struct LispDatum* x = new_integer(5);
+  struct LispDatum* lambda = new_lambda(full_lambda, &x, 1, NULL);
+
+  struct LispDatum* list_items[2];
+  list_items[0] = new_integer(2);
+  list_items[1] = new_integer(6);
+
+  struct LispDatum* ac[2];
+  ac[0] = lambda;
+  ac[1] = list(list_items, 2);
+
+  struct LispDatum* result = apply(ac, 2);
+
+  CuAssert(tc, "lambda did not return correct value.", result->type == Cons);
+  CuAssertIntEquals(tc, 7, result->car->int_val);
+  CuAssertIntEquals(tc, 6, result->cdr->car->int_val);
+  CuAssertPtrEquals(tc, NULL, result->cdr->cdr);
+}

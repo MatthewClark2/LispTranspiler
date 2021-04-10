@@ -133,8 +133,6 @@ struct LispDatum* append(struct LispDatum** args, uint32_t nargs);
  */
 struct LispDatum* reverse(struct LispDatum** args, uint32_t nargs);
 
-// TODO(matthew-c21): Test these functions. They are very important.
-// TODO(matthew-c21): Both of these implementations fail to include captured variables contained within lambdas.
 /**
  * Takes a function and a list, applying the list as arguments to the function, and returning the result.
  *
