@@ -203,7 +203,6 @@ impl Transpiler {
                 output.push(';');
             }
         }
-        lines.iter().for_each(|l| output.push_str(l.as_str()));
 
         output.push_str(format!("return {};}}", ret_value).as_str());
 

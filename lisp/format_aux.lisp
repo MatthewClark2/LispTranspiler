@@ -1,4 +1,4 @@
 (funcall
   (lambda (. args)
-    (apply format args))
+    (format args))
   :a :b :c)
