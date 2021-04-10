@@ -37,6 +37,7 @@
     "keyword": "new_keyword",
     "true": "get_true",
     "false": "get_false",
-    "lambda": "new_lambda"
+    "lambda": "new_lambda",
+    "nil": "get_nil"
   }
 }

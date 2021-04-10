@@ -60,7 +60,10 @@ impl Transpiler {
                             Some(y) => y.eq(&s),
                             None => false,
                         }) {
-                            captures.push(s.clone());
+                            // This is a hotfix to avoid capturing generated symbols.
+                            if !s.starts_with("gensym") {
+                                captures.push(s.clone());
+                            }
                         }
                     }
                 }
@@ -193,6 +196,13 @@ impl Transpiler {
         let mut lines: Vec<String> = body.iter().map(|n| self.translate_node(n, &mut vec![scope_id])).flatten().collect();
         let ret_value = lines.pop().unwrap();
 
+        for line in &lines {
+            output.push_str(line.as_str());
+
+            if !(output.ends_with(';') || output.ends_with('}')) {
+                output.push(';');
+            }
+        }
         lines.iter().for_each(|l| output.push_str(l.as_str()));
 
         output.push_str(format!("return {};}}", ret_value).as_str());
@@ -234,7 +244,9 @@ impl Transpiler {
 
                 // This will make extraneous semicolons for forms that generate braces, such as
                 // conditionals. However, this is essentially harmless, and can safely be ignored.
-                output.push(';');
+                if !(output.ends_with(';') || output.ends_with('}')) {
+                    output.push(';');
+                }
             }
         }
 
@@ -275,6 +287,9 @@ impl Transpiler {
                     }
                     TokenValue::Symbol(s) => {
                         output.push(self.sym_table.get(s.as_str(), Some(scope_ids)).unwrap().clone())
+                    }
+                    TokenValue::Nil => {
+                        output.push(format!("{}()", self.sym_table.get_factory("nil")))
                     }
                     _ => panic!("Encountered invalid token literal in AST. Contact the developer.")
                 }
@@ -343,9 +358,9 @@ impl Transpiler {
             }
             ASTNode::Statement(ExpandedCondition(c, t, f)) => {
                 let mut c = self.translate_node(&ASTNode::Value(c.clone()), scope_ids);
-                let l = c.len();
-                output.extend_from_slice(&mut c[..l - 1]);
-                output.push(format!("if ({}) {{", c.last().unwrap()));
+                let cond = c.pop().unwrap();
+                output.append(&mut c);
+                output.push(format!("if (truthy({})) {{", cond));
 
                 for v in t {
                     output.append(&mut self.translate_node(v, scope_ids));

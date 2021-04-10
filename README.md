@@ -43,3 +43,6 @@ application.
 Add a factory method that automatically applies visitors in the correct order.
 
 Statically allocate all keywords that appear in the program.
+
+There's a bug that prevents conditional statements from appearing in lambda expressions. Generated symbols are redeclared
+every time they're used, meaning that there's no need to try and capture them.

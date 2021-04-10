@@ -20,7 +20,7 @@ impl ASTNode {
         }
     }
 
-    fn try_from_parse_tree(tree: &ParseTree, scope_id: &mut usize) -> Result<ASTNode, (u32, String)>  {
+    fn try_from_parse_tree(tree: &ParseTree, scope_id: &mut usize) -> Result<ASTNode, (u32, String)> {
         match &tree {
             ParseTree::Leaf(t) => Ok(Self::from(t.clone())),
             ParseTree::Branch(elems, start, _stop, None) => {
@@ -120,7 +120,7 @@ impl ASTNode {
                                             }
                                         }
                                         ParseTree::Branch(_, start, _, _) => {
-                                            return Err((*start, "All elements in first argument to `lambda` special form should be symbols.".to_string()))
+                                            return Err((*start, "All elements in first argument to `lambda` special form should be symbols.".to_string()));
                                         }
                                     }
                                 }
@@ -160,8 +160,8 @@ impl ASTNode {
                                 match arg {
                                     Ok(ASTNode::Value(v)) => (values.push(v.clone())),
                                     Ok(_) => {
-                                        return Err((*line, format!("Expected a value to be passed as an argument. Found: {:?}.", &elems[0]).to_string()))
-                                    },
+                                        return Err((*line, format!("Expected a value to be passed as an argument. Found: {:?}.", &elems[0]).to_string()));
+                                    }
                                     _ => return arg,
                                 }
                             }
@@ -449,18 +449,17 @@ impl ASTVisitor<Vec<ASTNode>> for ConditionUnroll {
                 Ok(output)
             }
             // Handle the case of a condition used as a value for a definition.
-            ASTNode::Statement(Definition(name, Condition(c, t, f))) => {
-                let mut prefix = self.try_visit(
-                    &ASTNode::Value(Condition(c.clone(), t.clone(), f.clone())),
-                    sym_table,
-                )?;
+            ASTNode::Statement(Definition(name, v)) | ASTNode::Statement(Redefinition(name, v)) => {
+                let mut prefix = self.try_visit(&ASTNode::Value(v.clone()), sym_table)?;
                 let value = prefix.pop().unwrap();
 
-                output.push(ASTNode::Statement(Definition(
-                    name.clone(),
-                    value.as_value().clone(),
-                )));
+                output.append(&mut prefix);
 
+                if let ASTNode::Statement(Definition(..)) = ast {
+                    output.push(ASTNode::Statement(Definition(name.clone(), value.as_value().to_owned())))
+                } else {
+                    output.push(ASTNode::Statement(Redefinition(name.clone(), value.as_value().to_owned())))
+                }
                 Ok(output)
             }
             // Handle the case of a condition inside a function call.
@@ -537,12 +536,17 @@ impl SymbolValidation {
                 )))
             }
             ASTNode::Statement(Definition(name, value)) => {
+                let is_definition = sym_table.get(name.as_str(), None).is_none();
+
+                if is_definition {
+                    sym_table.register(name.as_str(), None);
+                }
+
                 let value =
                     self.try_visit_aux(&ASTNode::Value(value.clone()), sym_table, scope_ids)?;
 
                 // No scope IDs are required because definitions are only allowed at the top level.
-                if !sym_table.get(name.as_str(), None).is_some() {
-                    sym_table.register(name.as_str(), None);
+                if is_definition {
                     Ok(ASTNode::Statement(Definition(
                         name.clone(),
                         value.as_value().to_owned(),
@@ -1246,7 +1250,7 @@ mod ast_tests {
 
         if let ASTNode::Value(Condition(a, b, c)) = &ast[0] {
             if let (Literal(cond), Literal(if_true), Literal(if_false)) =
-                (a.as_ref(), b.as_ref(), c.as_ref())
+            (a.as_ref(), b.as_ref(), c.as_ref())
             {
                 assert_eq!(True, cond.value());
                 assert_eq!(Str("true".to_string()), if_true.value());
