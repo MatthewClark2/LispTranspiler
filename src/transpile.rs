@@ -21,6 +21,14 @@ impl Transpiler {
         "\nreturn 0;\n}"
     }
 
+    fn update_capture_vec(captures: &mut Vec<String>, new_captures: &Vec<String>) {
+        for capture in new_captures {
+            if !captures.contains(&capture) {
+                captures.push(capture.clone());
+            }
+        }
+    }
+
     /// Find captured variables inside the body of a lambda expression. Assumes all variables within
     /// the body are already valid. Returns a list of captured Lisp symbol names.
     fn find_captures(
@@ -34,32 +42,46 @@ impl Transpiler {
         for line in body {
             match line {
                 ASTNode::Statement(ExpandedCondition(c, t, f)) => {
-                    captures.append(&mut Self::find_captures(
-                        args,
-                        vararg,
-                        &vec![ASTNode::Value(c.clone())],
-                        scope_id,
-                    ));
-                    captures.append(&mut Self::find_captures(args, vararg, t, scope_id));
-                    captures.append(&mut Self::find_captures(args, vararg, f, scope_id));
+                    Self::update_capture_vec(
+                        &mut captures,
+                        &Self::find_captures(
+                            args,
+                            vararg,
+                            &vec![ASTNode::Value(c.clone())],
+                            scope_id,
+                        ),
+                    );
+                    Self::update_capture_vec(
+                        &mut captures,
+                        &mut Self::find_captures(args, vararg, t, scope_id),
+                    );
+                    Self::update_capture_vec(
+                        &mut captures,
+                        &mut Self::find_captures(args, vararg, f, scope_id),
+                    );
                 }
                 ASTNode::Value(Call(_, params)) => params.iter().for_each(|v| {
-                    captures.append(&mut Self::find_captures(
-                        args,
-                        vararg,
-                        &vec![ASTNode::Value(v.clone())],
-                        scope_id,
-                    ))
+                    Self::update_capture_vec(
+                        &mut captures,
+                        &mut Self::find_captures(
+                            args,
+                            vararg,
+                            &vec![ASTNode::Value(v.clone())],
+                            scope_id,
+                        ),
+                    )
                 }),
                 ASTNode::Value(Lambda(a, v, b, s)) => {
-                    captures.append(&mut Self::find_captures(a, v, b, *s))
+                    Self::update_capture_vec(&mut captures, &mut Self::find_captures(a, v, b, *s))
                 }
                 ASTNode::Value(Literal(t)) => {
                     if let Symbol(s) = t.value() {
-                        if !(args.contains(&s) || match vararg {
-                            Some(y) => y.eq(&s),
-                            None => false,
-                        }) {
+                        if !(args.contains(&s)
+                            || match vararg {
+                                Some(y) => y.eq(&s),
+                                None => false,
+                            })
+                        {
                             // This is a hotfix to avoid capturing generated symbols.
                             if !s.starts_with("gensym") {
                                 captures.push(s.clone());
@@ -67,23 +89,18 @@ impl Transpiler {
                         }
                     }
                 }
-                ASTNode::Statement(Definition(_, v)) => captures.append(&mut Self::find_captures(
-                    args,
-                    vararg,
-                    &vec![ASTNode::Value(v.clone())],
-                    scope_id,
-                )),
-                ASTNode::Statement(Redefinition(_, v)) => {
-                    captures.append(&mut Self::find_captures(
-                        args,
-                        vararg,
-                        &vec![ASTNode::Value(v.clone())],
-                        scope_id,
-                    ))
+                ASTNode::Statement(Definition(_, v)) | ASTNode::Statement(Redefinition(_, v)) => {
+                    Self::update_capture_vec(
+                        &mut captures,
+                        &mut Self::find_captures(
+                            args,
+                            vararg,
+                            &vec![ASTNode::Value(v.clone())],
+                            scope_id,
+                        ),
+                    )
                 }
-                ASTNode::Value(Condition(..)) => {
-                    panic!("Contact the developer.")
-                }
+                ASTNode::Value(Condition(..)) => panic!("Contact the developer."),
                 ASTNode::Statement(Declaration(..)) => (),
             }
         }
@@ -109,7 +126,8 @@ impl Transpiler {
 
                     output.append(&mut Self::extract_lambda_definitions(body));
                 }
-                ASTNode::Statement(Definition(_, value)) | ASTNode::Statement(Redefinition(_, value)) => {
+                ASTNode::Statement(Definition(_, value))
+                | ASTNode::Statement(Redefinition(_, value)) => {
                     output.append(&mut Self::extract_lambda_definitions(&vec![
                         ASTNode::Value(value.clone()),
                     ]))
@@ -145,7 +163,7 @@ impl Transpiler {
             fn_name
         );
 
-        let (args, vararg, body, id) = self.functions[scope_id-1].clone();
+        let (args, vararg, body, id) = self.functions[scope_id - 1].clone();
         let captures = Self::find_captures(&args, &vararg, &body, id);
 
         let n_captures = captures.len();
@@ -160,7 +178,9 @@ impl Transpiler {
             output.push_str(
                 format!(
                     "struct LispDatum* {} = _args[{}];",
-                    self.sym_table.get(capture.as_str(), Some(&vec![id])).unwrap(),
+                    self.sym_table
+                        .get(capture.as_str(), Some(&vec![id]))
+                        .unwrap(),
                     i
                 )
                 .as_str(),
@@ -184,7 +204,9 @@ impl Transpiler {
             output.push_str(
                 format!(
                     "struct LispDatum* {} = {}(_args + (_nargs - {}), {});",
-                    self.sym_table.get(vararg.as_ref().unwrap().as_str(), Some(&vec![scope_id])).unwrap(),
+                    self.sym_table
+                        .get(vararg.as_ref().unwrap().as_str(), Some(&vec![scope_id]))
+                        .unwrap(),
                     self.sym_table.get("list", None).unwrap(),
                     n_captures + n_named_args,
                     n_captures + n_named_args
@@ -193,7 +215,11 @@ impl Transpiler {
             )
         }
 
-        let mut lines: Vec<String> = body.iter().map(|n| self.translate_node(n, &mut vec![scope_id])).flatten().collect();
+        let mut lines: Vec<String> = body
+            .iter()
+            .map(|n| self.translate_node(n, &mut vec![scope_id]))
+            .flatten()
+            .collect();
         let ret_value = lines.pop().unwrap();
 
         for line in &lines {
