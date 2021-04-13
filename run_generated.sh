@@ -1,7 +1,7 @@
-echo "Arguments Provided: " $*
+echo "Script File: " $*
 
 (echo "Building Rust..."
-cargo run $@ | clang-format > out.c) &&
+cargo -q run $@ | clang-format > out.c) &&
 if [ ! -d tmp ]; then
 	mkdir tmp
 fi &&

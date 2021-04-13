@@ -14,7 +14,7 @@ impl Transpiler {
     }
 
     fn main_definition() -> &'static str {
-        "int main(void) {\n"
+        "int main(void) {set_global_error_behavior(LogAndQuit);\n"
     }
 
     fn postfix() -> &'static str {
@@ -169,6 +169,22 @@ impl Transpiler {
         let n_captures = captures.len();
         let n_named_args = args.len();
 
+        // Ensure that there are a correct number of arguments provided.
+        let (cmp, qual) = if vararg.is_some() {
+            ("<", "at least ")
+        } else {
+            ("!=", "exactly ")
+        };
+        output.push_str(
+            format!("if (_nargs {} {} + {}) {{ return raise(Argument, \"Expected {}{} argument(s) to lambda expression {}.\"); }}",
+                cmp,
+                args.len(),
+                n_captures,
+                qual,
+                args.len(),
+                scope_id,
+            ).as_str());
+
         for (i, capture) in captures.iter().enumerate() {
             // TODO(matthew-c21): At some point, every individual symbol will need to have an
             //  associated scope. However, since only lambdas have a scope and all other variables
@@ -203,13 +219,13 @@ impl Transpiler {
         if vararg.is_some() {
             output.push_str(
                 format!(
-                    "struct LispDatum* {} = {}(_args + (_nargs - {}), {});",
+                    "struct LispDatum* {} = {}(_args + {} + {}, _nargs - {} - {});",
                     self.sym_table
                         .get(vararg.as_ref().unwrap().as_str(), Some(&vec![scope_id]))
                         .unwrap(),
                     self.sym_table.get("list", None).unwrap(),
-                    n_captures + n_named_args,
-                    n_captures + n_named_args
+                    n_captures, n_named_args,
+                    n_captures, n_named_args
                 )
                 .as_str(),
             )

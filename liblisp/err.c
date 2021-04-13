@@ -11,6 +11,7 @@
 enum Cause GlobalErrorState = None;
 
 // This is left static because it shouldn't ever need to be read externally.
+// TODO(matthew-c21): This isn't a particularly reasonable default.
 static enum ErrorBehavior GlobalErrorBehavior = LogOnly;
 
 static void destroy_and_exit() {

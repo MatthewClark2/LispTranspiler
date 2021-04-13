@@ -384,7 +384,7 @@ void display(struct LispDatum* datum) {
         read_ptr = read_ptr->cdr;
       }
 
-      if (read_ptr != NULL) {
+      if (read_ptr != NULL && read_ptr->car != NULL) {
         printf(" . ");
         display(read_ptr);
       }
