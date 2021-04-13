@@ -47,7 +47,8 @@ struct LispDatum* new_cons(struct LispDatum* car, struct LispDatum* cdr) {
   struct LispDatum* x = malloc(sizeof(struct LispDatum));
   x->type = Cons;
   x->car = car;
-  x->cdr = cdr;
+
+  x->cdr = cdr->car == NULL || datum_cmp(cdr, get_nil()) ? NULL : cdr;
   return x;
 }
 

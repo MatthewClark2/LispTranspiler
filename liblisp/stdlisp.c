@@ -456,9 +456,20 @@ int datum_cmp(const struct LispDatum* a, const struct LispDatum* b) {
       case Cons:
         if (a->car == NULL && b->car == NULL) {
           return 1;
+        } else if (a->car == NULL || b->car == NULL) {
+          return 0;
         }
 
-        return datum_cmp(a->car, b->car) && datum_cmp(a->cdr, b->cdr);
+        int car_eql = datum_cmp(a->car, b->car);
+
+        int similar_termination = 1;
+        if (a->cdr == NULL && b->cdr == NULL) {
+          return car_eql;
+        } else if (a->cdr == NULL || b->cdr == NULL) {
+          similar_termination = 0;
+        }
+
+        return (car_eql && similar_termination) && datum_cmp(a->cdr, b->cdr);
       case Integer:
       case Real:
       case Rational:
@@ -493,6 +504,10 @@ struct LispDatum* car(struct LispDatum** args, uint32_t nargs) {
     return raise(Type, "`car` expected proper list argument");
   }
 
+  if (args[0]->car == NULL) {
+    return raise(Argument, "Cannot take the `car` of an empty list.");
+  }
+
   return args[0]->car;
 }
 
@@ -503,7 +518,7 @@ struct LispDatum* cdr(struct LispDatum** args, uint32_t nargs) {
     return raise(Type, "`cdr` expected a list valued argument.");
   }
 
-  if (is_occupied_node(args[0])) {
+  if (is_occupied_node(args[0]) && args[0]->cdr != NULL) {
     return args[0]->cdr;
   }
 
@@ -548,22 +563,20 @@ struct LispDatum* cons(struct LispDatum** args, uint32_t nargs) {
 struct LispDatum* list(struct LispDatum** args, uint32_t nargs) {
   struct LispDatum* alist = malloc(sizeof(struct LispDatum));
   alist->type = Cons;
+  alist->cdr = NULL;
 
   if (nargs == 0) {
-    alist->car = alist->cdr = NULL;
+    alist->car = NULL;
     return alist;
   }
 
-  struct LispDatum* write_ptr = alist;
-  int initial_write = 1;
+  alist->car = args[0];
 
-  for (uint32_t i = 0; i < nargs; ++i) {
+  struct LispDatum* write_ptr = alist;
+
+  for (uint32_t i = 1; i < nargs; ++i) {
     push(write_ptr, args[i]);
-    if (initial_write) {
-      initial_write = 0;
-    } else {
-      write_ptr = write_ptr->cdr;
-    }
+    write_ptr = write_ptr->cdr;
   }
 
   return alist;
@@ -585,6 +598,7 @@ struct LispDatum* append(struct LispDatum** args, uint32_t nargs) {
   }
 
   struct LispDatum* combination = malloc(sizeof(struct LispDatum));
+  // TODO(matthew-c21): Conditional jump based on uninitialized value.
   combination->type = Cons;
 
   struct LispDatum* write_ptr = combination;
@@ -639,7 +653,7 @@ struct LispDatum* reverse(struct LispDatum** args, uint32_t nargs) {
     return args[0];
   }
 
-  struct LispDatum* reversal = NULL;
+  struct LispDatum* reversal = get_nil();
   struct LispDatum* idx = args[0];
 
   while (is_occupied_node(idx)) {
@@ -661,8 +675,8 @@ struct LispDatum* reverse(struct LispDatum** args, uint32_t nargs) {
 struct LispDatum* eqv(struct LispDatum** args, uint32_t nargs) {
   int truthy = 1;
 
-  for (uint32_t i = 0; i + 1 < nargs; ++i) {
-    truthy = truthy && datum_cmp(args[i], args[i + 1]);
+  for (uint32_t i = 0; truthy && (i + 1 < nargs); ++i) {
+    truthy = datum_cmp(args[i], args[i + 1]);
   }
 
   return truthy ? get_true() : get_false();

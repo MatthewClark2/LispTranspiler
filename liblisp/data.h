@@ -80,6 +80,9 @@ struct LispDatum* new_keyword(const char* s);
  */
 struct LispDatum* new_lambda(LispFunction f, struct LispDatum** captures, uint32_t n_captures, char* name);
 
+/**
+ * Constructs a new pair given car and cdr. If cdr is nil, this creates a properly terminated list only containing car.
+ */
 struct LispDatum* new_cons(struct LispDatum* car, struct LispDatum* cdr);
 
 void discard_datum(struct LispDatum* x);

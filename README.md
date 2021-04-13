@@ -47,11 +47,8 @@ Statically allocate all keywords that appear in the program.
 There's a bug that prevents conditional statements from appearing in lambda expressions. Generated symbols are redeclared
 every time they're used, meaning that there's no need to try and capture them.
 
-There's a bug that prevents lambdas from being able to capture themselves, as the capture array is put together before
-the lambda is defined. This problem could be avoided by added a `recur` form.
+Add some sort of recursive utility, such as a `recur` special form.
 
 Get rid of all the unnecessary semicolons that appear in the generated code.
 
-The `cons` function does not produce the correct behavior when given `nil` in place of a list.
-
-Check Valgrind.
+Update translation to include validation for the number of arguments given to a lambda.

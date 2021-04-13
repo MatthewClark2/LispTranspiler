@@ -278,11 +278,35 @@ void Test_promotion_equality_real(CuTest* tc) {
 }
 
 void Test_cons_equality(CuTest* tc) {
-  tc = NULL;
+  // At least theoretically, these should be different objects.
+  struct LispDatum* empty = list(NULL, 0);
+  struct LispDatum* empty2 = list(NULL, 0);
+  CuAssertTrue(tc, datum_cmp(empty, empty2));
+
+  struct LispDatum* false = get_false();
+  struct LispDatum* mono = list(&false, 1);
+  struct LispDatum* mono2 = list(&false, 1);
+  CuAssertTrue(tc, datum_cmp(mono, mono2));
+
+  struct LispDatum* elems[3];
+  elems[0] = new_integer(1);
+  elems[1] = new_integer(2);
+  elems[2] = new_integer(3);
+
+  struct LispDatum* alist = list(elems, 3);
+  struct LispDatum* pair = new_cons(elems[2], get_nil());
+  pair = new_cons(elems[1], pair);
+  pair = new_cons(elems[0], pair);
+
+  CuAssertTrue(tc, datum_cmp(alist, pair));
 }
 
 void Test_cons_inequality(CuTest* tc) {
-  tc = NULL;
+  struct LispDatum* empty = list(NULL, 0);
+  struct LispDatum* false = get_false();
+  struct LispDatum* mono = list(&false, 1);
+
+  CuAssertTrue(tc, !datum_cmp(empty, mono));
 }
 
 // MATH
@@ -832,6 +856,14 @@ void Test_car(CuTest* tc) {
   CuAssert(tc, "(car '(1 2 3)) = 1", result == args[0]);
 }
 
+void Test_car_errors(CuTest* tc) {
+  set_global_error_behavior(LogOnly);
+
+  struct LispDatum* empty = list(NULL, 0);
+  car(&empty, 1);
+  CuAssertIntEquals(tc, Argument, GlobalErrorState);
+}
+
 void Test_cdr(CuTest* tc) {
   struct LispDatum* args[3];
 
@@ -847,6 +879,9 @@ void Test_cdr(CuTest* tc) {
   CuAssert(tc, "(car (cdr '(1 2 3)) == 2", output->car == args[1]);
   CuAssert(tc, "(car (cdr (cdr '(1 2 3))) == 3", output->cdr->car == args[2]);
   CuAssert(tc, "(cdr (cdr (cdr '(1 2 3))) == NULL", output->cdr->cdr == NULL);
+
+  struct LispDatum* mono = list(args, 1);
+  CuAssertTrue(tc, datum_cmp(cdr(&mono, 1), list(NULL, 0)));
 }
 
 void Test_cadr_errors(CuTest* tc) {
@@ -1037,6 +1072,29 @@ void Test_cons(CuTest* tc) {
   CuAssertTrue(tc, pair->cdr == args[1]);
 }
 
+void Test_cons_to_nil(CuTest* tc) {
+  struct LispDatum* args[2];
+  args[0] = get_false();
+  args[1] = get_nil();
+
+  struct LispDatum* pair = cons(args, 2);
+  CuAssertTrue(tc, pair->type == Cons);
+  CuAssertTrue(tc, pair->car == args[0]);
+  CuAssertPtrEquals(tc, NULL, pair->cdr);
+}
+
+void Test_cons_to_empty_list(CuTest* tc) {
+  struct LispDatum* args[2];
+  args[0] = new_integer(0);
+  args[1] = list(NULL, 0);
+
+  struct LispDatum* pair = cons(args, 2);
+
+  CuAssertIntEquals(tc, Cons, pair->type);
+  CuAssertPtrEquals(tc, args[0], pair->car);
+  CuAssertPtrEquals(tc, NULL, pair->cdr);
+}
+
 void Test_cons_errors(CuTest* tc) {
   // Too few
   AssertThrows(cons(NULL, 0), Argument);
@@ -1094,7 +1152,7 @@ void Test_reverse_errors(CuTest* tc) {
   // Pair
   struct LispDatum* pair_args[2];
   pair_args[0] = bad_arg;
-  pair_args[1] = get_nil();
+  pair_args[1] = get_true();
 
   struct LispDatum* bad_pair = cons(pair_args, 2);
   AssertThrows(reverse(&bad_pair, 1), Type);
