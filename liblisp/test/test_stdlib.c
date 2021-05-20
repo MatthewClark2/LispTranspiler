@@ -5,8 +5,8 @@
 #include "../data.h"
 
 #define AssertThrows(expression, err) CuAssertPtrEquals(tc, NULL, (expression)); \
-CuAssertTrue(tc, GlobalErrorState == (err)); \
-raise(None, NULL);
+CuAssertTrue(tc, get_error_state() == (err)); \
+raise_err(None, NULL);
 
 static void assert_empty_list(CuTest* tc, const char* msg, struct LispDatum* alist) {
   CuAssert(tc, "Value is a list", alist->type == Cons);
@@ -837,9 +837,9 @@ void Test_nil_cadr(CuTest* tc) {
 
   struct LispDatum* null_result = car(&nil, 1);
   CuAssert(tc, "(car nil) fails", null_result == NULL);
-  CuAssert(tc, "Error state raised", GlobalErrorState);
+  CuAssert(tc, "Error state raised", get_error_state());
 
-  raise(None, "Error state reset.");
+  raise_err(None, "Error state reset.");
 }
 
 void Test_car(CuTest* tc) {
@@ -861,7 +861,7 @@ void Test_car_errors(CuTest* tc) {
 
   struct LispDatum* empty = list(NULL, 0);
   car(&empty, 1);
-  CuAssertIntEquals(tc, Argument, GlobalErrorState);
+  CuAssertIntEquals(tc, Argument, get_error_state());
 }
 
 void Test_cdr(CuTest* tc) {
@@ -887,38 +887,38 @@ void Test_cdr(CuTest* tc) {
 void Test_cadr_errors(CuTest* tc) {
   // Fail without enough arguments.
   CuAssertPtrEquals(tc, NULL, car(NULL, 0));
-  CuAssert(tc, "Too few arguments to `car` fail", GlobalErrorState == Argument);
+  CuAssert(tc, "Too few arguments to `car` fail", get_error_state() == Argument);
 
-  raise(None, NULL);
+  raise_err(None, NULL);
 
   CuAssertPtrEquals(tc, NULL, cdr(NULL, 0));
-  CuAssert(tc, "Too few arguments to `cdr` fail", GlobalErrorState == Argument);
+  CuAssert(tc, "Too few arguments to `cdr` fail", get_error_state() == Argument);
 
-  raise(None, NULL);
+  raise_err(None, NULL);
 
   // Fail with too many arguments. NULL is used because the arguments shouldn't even be accessed.
   CuAssertPtrEquals(tc, NULL, car(NULL, 0));
-  CuAssert(tc, "Too few arguments to `car` fail", GlobalErrorState == Argument);
+  CuAssert(tc, "Too few arguments to `car` fail", get_error_state() == Argument);
 
-  raise(None, NULL);
+  raise_err(None, NULL);
 
   CuAssertPtrEquals(tc, NULL, cdr(NULL, 2));
-  CuAssert(tc, "Too many arguments to `cdr` fail", GlobalErrorState == Argument);
+  CuAssert(tc, "Too many arguments to `cdr` fail", get_error_state() == Argument);
 
-  raise(None, NULL);
+  raise_err(None, NULL);
 
   // Fail with non-list arguments.
   struct LispDatum* bad_arg = new_string("fubar");
 
   CuAssertPtrEquals(tc, NULL, car(&bad_arg, 1));
-  CuAssert(tc, "`car` fails with non-list arg", GlobalErrorState == Type);
+  CuAssert(tc, "`car` fails with non-list arg", get_error_state() == Type);
 
-  raise(None, NULL);
+  raise_err(None, NULL);
 
   CuAssertPtrEquals(tc, NULL, cdr(&bad_arg, 1));
-  CuAssert(tc, "`cdr` fails with non-list arg", GlobalErrorState == Type);
+  CuAssert(tc, "`cdr` fails with non-list arg", get_error_state() == Type);
 
-  raise(None, NULL);
+  raise_err(None, NULL);
 }
 
 void Test_length(CuTest* tc) {
@@ -1209,4 +1209,11 @@ void Test_apply(CuTest* tc) {
   CuAssertIntEquals(tc, 7, result->car->int_val);
   CuAssertIntEquals(tc, 6, result->cdr->car->int_val);
   CuAssertPtrEquals(tc, NULL, result->cdr->cdr);
+}
+
+void Test_foo(CuTest* tc) {
+  tc = NULL;
+#ifdef __cplusplus
+  printf("compiled with c++");
+#endif
 }

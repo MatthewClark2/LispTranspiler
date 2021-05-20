@@ -176,7 +176,7 @@ impl Transpiler {
             ("!=", "exactly ")
         };
         output.push_str(
-            format!("if (_nargs {} {} + {}) {{ return raise(Argument, \"Expected {}{} argument(s) to lambda expression {}.\"); }}",
+            format!("if (_nargs {} {} + {}) {{ return raise_err(Argument, \"Expected {}{} argument(s) to lambda expression {}.\"); }}",
                 cmp,
                 args.len(),
                 n_captures,

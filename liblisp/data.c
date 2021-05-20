@@ -48,7 +48,7 @@ struct LispDatum* new_cons(struct LispDatum* car, struct LispDatum* cdr) {
   x->type = Cons;
   x->car = car;
 
-  x->cdr = cdr->car == NULL || datum_cmp(cdr, get_nil()) ? NULL : cdr;
+  x->cdr = car == NULL || cdr->car == NULL || datum_cmp(cdr, get_nil()) ? NULL : cdr;
   return x;
 }
 
@@ -116,7 +116,7 @@ void simplify(struct LispDatum* x) {
 
   // Check for division by 0.
   if (x->den == 0) {
-    raise(ZeroDivision, "Division by 0 in simplification of rational number");
+    raise_err(ZeroDivision, "Division by 0 in simplification of rational number");
   }
 
   // Reduce
@@ -157,7 +157,7 @@ struct LispDatum* get_false() {
 }
 
 int truthy(const struct LispDatum* x) {
-  return x != get_false();
+  return x != get_false() && x != get_nil();
 }
 
 struct LispDatum* new_keyword(const char* s) {

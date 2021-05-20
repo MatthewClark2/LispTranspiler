@@ -38,7 +38,7 @@ static char* cause_string(enum Cause cause) {
   }
 }
 
-void* raise(enum Cause cause, const char* msg) {
+void* raise_err(enum Cause cause, const char* msg) {
   fprintf(stderr, "%s: %s\n", cause_string(cause), msg);
   GlobalErrorState = cause;
 
@@ -58,4 +58,8 @@ void* raise(enum Cause cause, const char* msg) {
 
 void set_global_error_behavior(enum ErrorBehavior behavior) {
   GlobalErrorBehavior = behavior;
+}
+
+enum Cause get_error_state() {
+  return GlobalErrorState;
 }

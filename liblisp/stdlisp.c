@@ -20,7 +20,7 @@ static int is_occupied_node(const struct LispDatum* d) {
 static void push(struct LispDatum* node, struct LispDatum* value) {
   if (node == NULL || node->type != Cons || node->cdr != NULL) {
     set_global_error_behavior(LogAndQuit);
-    raise(Generic, "Fatal programming error occurred causing illegal call to `push`.");
+    raise_err(Generic, "Fatal programming error occurred causing illegal call to `push`.");
   }
 
   // Pushing to an empty node
@@ -188,7 +188,7 @@ struct LispDatum* add(struct LispDatum** args, uint32_t nargs) {
   struct LispDatum* init = new_integer(0);
 
   if (iterative_math_function(args, nargs, init, add_aux)) {
-    return raise(Math, "Addition error.");
+    return raise_err(Math, "Addition error.");
   }
 
   return init;
@@ -219,7 +219,7 @@ struct LispDatum* subtract(struct LispDatum** args, uint32_t nargs) {
   struct LispDatum* init;
 
   if (nargs == 0) {
-    return raise(Argument, "Too few calls to subtract.");
+    return raise_err(Argument, "Too few calls to subtract.");
   } else if (nargs == 1) {
     // The argument needs to be negated, so it is essentially being subtracted from 0.
     init = new_integer(0);
@@ -233,7 +233,7 @@ struct LispDatum* subtract(struct LispDatum** args, uint32_t nargs) {
 
   if (iterative_math_function(args, nargs, init, subtract_aux)) {
     free(init);
-    return raise(Math, "Error during subtraction.");
+    return raise_err(Math, "Error during subtraction.");
   }
 
   return init;
@@ -267,7 +267,7 @@ struct LispDatum* multiply(struct LispDatum** args, uint32_t nargs) {
 
   if (iterative_math_function(args, nargs, init, multiply_aux)) {
     free(init);
-    return raise(Math, "Error during multiplication.");
+    return raise_err(Math, "Error during multiplication.");
   }
 
   return init;
@@ -280,7 +280,7 @@ void divide_aux(struct LispDatum* acc, const struct LispDatum* intermediate) {
   write_zero(&zero);
 
   if (datum_cmp(intermediate, &zero)) {
-    raise(ZeroDivision, NULL);
+    raise_err(ZeroDivision, NULL);
   }
 
   switch (acc->type) {
@@ -321,7 +321,7 @@ struct LispDatum* divide(struct LispDatum** args, uint32_t nargs) {
 
   if (iterative_math_function(args, nargs, init, divide_aux)) {
     free(init);
-    return raise(Math, "Error during division.");
+    return raise_err(Math, "Error during division.");
   }
 
   return init;
@@ -329,11 +329,11 @@ struct LispDatum* divide(struct LispDatum** args, uint32_t nargs) {
 
 struct LispDatum* mod(struct LispDatum** args, uint32_t nargs) {
   if (nargs != 2) {
-    return raise(Argument, "Incorrect number of arguments passed to mod.");
+    return raise_err(Argument, "Incorrect number of arguments passed to mod.");
   }
 
   if (args[0]->type != Integer || args[1]->type != Integer) {
-    return raise(Math, "Cannot perform modulus operation on non-integer values.");
+    return raise_err(Math, "Cannot perform modulus operation on non-integer values.");
   }
 
   return new_integer(args[0]->int_val % args[1]->int_val);
@@ -341,11 +341,11 @@ struct LispDatum* mod(struct LispDatum** args, uint32_t nargs) {
 
 struct LispDatum* division(struct LispDatum** args, uint32_t nargs) {
   if (nargs != 2) {
-    return raise(Argument, "Incorrect number of arguments passed to mod.");
+    return raise_err(Argument, "Incorrect number of arguments passed to mod.");
   }
 
   if (args[0]->type != Integer || args[1]->type != Integer) {
-    return raise(Math, "Cannot perform division algorithm on non-integer values.");
+    return raise_err(Math, "Cannot perform division algorithm on non-integer values.");
   }
 
   struct LispDatum* d = new_integer(args[0]->int_val / args[1]->int_val);
@@ -438,7 +438,7 @@ int datum_cmp(const struct LispDatum* a, const struct LispDatum* b) {
       case Complex:
         return x.real == y.real && x.im == y.im;
       default:
-        raise(Generic, "Non-numeric value undergoing numeric equality test.");
+        raise_err(Generic, "Non-numeric value undergoing numeric equality test.");
         return 0;
     }
   } else if (a->type == b->type) {
@@ -474,7 +474,7 @@ int datum_cmp(const struct LispDatum* a, const struct LispDatum* b) {
       case Real:
       case Rational:
       case Complex:
-        raise(Generic, "Invalid program state. Contact the developer.");
+        raise_err(Generic, "Invalid program state. Contact the developer.");
         break;
     }
   }
@@ -499,13 +499,13 @@ struct LispDatum* format(struct LispDatum** args, uint32_t nargs) {
 
 struct LispDatum* car(struct LispDatum** args, uint32_t nargs) {
   if (nargs != 1) {
-    return raise(Argument, "`car` takes a single argument.");
+    return raise_err(Argument, "`car` takes a single argument.");
   } else if (args[0]->type != Cons) {
-    return raise(Type, "`car` expected proper list argument");
+    return raise_err(Type, "`car` expected proper list argument");
   }
 
   if (args[0]->car == NULL) {
-    return raise(Argument, "Cannot take the `car` of an empty list.");
+    return raise_err(Argument, "Cannot take the `car` of an empty list.");
   }
 
   return args[0]->car;
@@ -513,9 +513,9 @@ struct LispDatum* car(struct LispDatum** args, uint32_t nargs) {
 
 struct LispDatum* cdr(struct LispDatum** args, uint32_t nargs) {
   if (nargs != 1) {
-    return raise(Argument, "`cdr` expects exactly one argument");
+    return raise_err(Argument, "`cdr` expects exactly one argument");
   } else if (args[0]->type != Nil && args[0]->type != Cons) {
-    return raise(Type, "`cdr` expected a list valued argument.");
+    return raise_err(Type, "`cdr` expected a list valued argument.");
   }
 
   if (is_occupied_node(args[0]) && args[0]->cdr != NULL) {
@@ -527,13 +527,13 @@ struct LispDatum* cdr(struct LispDatum** args, uint32_t nargs) {
 
 struct LispDatum* length(struct LispDatum** args, uint32_t nargs) {
   if (nargs != 1) {
-    return raise(Argument, "`length` takes a single argument.");
+    return raise_err(Argument, "`length` takes a single argument.");
   } else if (args[0]->type == Nil) {
     return new_integer(0);
   } else if (args[0]->type == String) {
     return new_integer(args[0]->length);
   } else if (args[0]->type != Cons) {
-      return raise(Type, "`length` expected list argument");
+      return raise_err(Type, "`length` expected list argument");
   }
 
   int len = 0;
@@ -546,7 +546,7 @@ struct LispDatum* length(struct LispDatum** args, uint32_t nargs) {
 
   // The 0 length check helps account for empty lists that never get assigned to their cdr.
   if (len != 0 && ptr != NULL) {
-    return raise(Type, "`length` expected list argument. Received pair.");
+    return raise_err(Type, "`length` expected list argument. Received pair.");
   }
 
   return new_integer(len);
@@ -554,7 +554,7 @@ struct LispDatum* length(struct LispDatum** args, uint32_t nargs) {
 
 struct LispDatum* cons(struct LispDatum** args, uint32_t nargs) {
   if (nargs != 2) {
-    return raise(Argument, "`cons` takes exactly two arguments.");
+    return raise_err(Argument, "`cons` takes exactly two arguments.");
   }
 
   return new_cons(args[0], args[1]);
@@ -586,7 +586,7 @@ struct LispDatum* append(struct LispDatum** args, uint32_t nargs) {
   // Ensure type of all arguments.
   for (uint32_t i = 0; i < nargs; ++i) {
     if (args[i]->type != Cons && args[i]->type != Nil) {
-      return raise(Type, "Expected list in argument to `append`.");
+      return raise_err(Type, "Expected list in argument to `append`.");
     }
   }
 
@@ -626,7 +626,7 @@ struct LispDatum* append(struct LispDatum** args, uint32_t nargs) {
     }
 
     if (idx != NULL) {
-      return raise(Type, "Non-terminal arguments to `append` should be proper lists");
+      return raise_err(Type, "Non-terminal arguments to `append` should be proper lists");
     }
   }
 
@@ -641,11 +641,11 @@ struct LispDatum* append(struct LispDatum** args, uint32_t nargs) {
 
 struct LispDatum* reverse(struct LispDatum** args, uint32_t nargs) {
   if (nargs != 1) {
-    return raise(Argument, "`reverse` takes exactly one argument");
+    return raise_err(Argument, "`reverse` takes exactly one argument");
   } else if (args[0]->type == Nil) {
     return args[0];
   } else if (args[0]->type != Cons) {
-    return raise(Type, "`reverse` expected list argument");
+    return raise_err(Type, "`reverse` expected list argument");
   }
 
   // Handle case of empty and singleton list.
@@ -662,7 +662,7 @@ struct LispDatum* reverse(struct LispDatum** args, uint32_t nargs) {
   }
 
   if (idx != NULL) {
-    return raise(Type, "`reverse` expects a proper list");
+    return raise_err(Type, "`reverse` expects a proper list");
   }
 
   if (reversal == NULL) {
@@ -707,11 +707,11 @@ static int cmp(struct LispDatum* a, struct LispDatum* b) {
           return  x.real > y.real ? 1 : -1;
         }
       default:
-        raise(Generic, "invalid state reached during cmp");
+        raise_err(Generic, "invalid state reached during cmp");
         return 0;
     }
   } else {
-    raise(Generic, "invalid state reached during cmp");
+    raise_err(Generic, "invalid state reached during cmp");
     return 0;
   }
 }
@@ -723,7 +723,7 @@ comparator(struct LispDatum** args, uint32_t nargs, int (* valid)(struct LispDat
   for (uint32_t i = 0; i + 1 < nargs; ++i) {
     // TODO(matthew-c21): Redundant checks are redundant.
     if (!is_numeric(args[i]) || !is_numeric(args[i + 1])) {
-      return raise(Generic, "Compared values must be numeric.");
+      return raise_err(Generic, "Compared values must be numeric.");
     }
 
     is_true = is_true && valid(args[i], args[i + 1]);
@@ -800,7 +800,7 @@ struct LispDatum* logical_or(struct LispDatum** args, uint32_t nargs) {
 
 struct LispDatum* logical_not(struct LispDatum** args, uint32_t nargs) {
   if (nargs != 1) {
-    return raise(Generic, "Wrong number of arguments passed to not");
+    return raise_err(Generic, "Wrong number of arguments passed to not");
   }
 
   return truthy(args[0]) ? get_false() : get_true();
@@ -808,9 +808,9 @@ struct LispDatum* logical_not(struct LispDatum** args, uint32_t nargs) {
 
 struct LispDatum* apply(struct LispDatum** args, uint32_t nargs) {
   if (nargs != 2) {
-    return raise(Argument, "`apply` requires exactly two arguments.");
+    return raise_err(Argument, "`apply` requires exactly two arguments.");
   } else if (args[0]->type != Lambda || ((args[1]->type != Cons) && args[1]->type != Nil)) {
-    return raise(Type, "Expected `lambda` and `cons` type arguments to `apply`.");
+    return raise_err(Type, "Expected `lambda` and `cons` type arguments to `apply`.");
   }
 
   // This is a double traversal, which is inefficient, but saves the hassle of allocating and freeing memory.
@@ -835,7 +835,7 @@ struct LispDatum* apply(struct LispDatum** args, uint32_t nargs) {
 
   // Improper list, so we give up.
   if (ptr != NULL) {
-    return raise(Type, "`apply` requires a proper list.");
+    return raise_err(Type, "`apply` requires a proper list.");
   }
 
   return args[0]->f(f_args, j);
@@ -843,9 +843,9 @@ struct LispDatum* apply(struct LispDatum** args, uint32_t nargs) {
 
 struct LispDatum* funcall(struct LispDatum** args, uint32_t nargs) {
   if (nargs == 0) {
-    return raise(Argument, "`funcall` requires at least one argument.");
+    return raise_err(Argument, "`funcall` requires at least one argument.");
   } else if (args[0]->type != Lambda) {
-    return raise(Type, "Expected lambda.");
+    return raise_err(Type, "Expected lambda.");
   }
 
   struct LispDatum* args_with_capture[nargs - 1 + args[0]->n_captures];
